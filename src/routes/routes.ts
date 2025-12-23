@@ -1,5 +1,4 @@
 import express from "express";
-import { getUser } from "../logic/user"
 import { getRole, createRole, updateRole } from "../logic/role"
 
 const router = express.Router();
