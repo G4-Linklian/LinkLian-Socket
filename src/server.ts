@@ -14,9 +14,10 @@ const PORT = process.env.PORT || 9090;
 app.use(cors());
 app.use(bodyParser.json());
 
-app.use("/api", verifyToken, routes);
+// app.use("/api", verifyToken, routes); อันนี้รอใช้ตอนเดียร์เริ่มทำ Autho
+app.use("/api", routes);
 
-app.get("/", verifyToken, (req: Request, res: Response) => {
+app.get("/", (req: Request, res: Response) => {
   res.status(200).json({ success: true, message: "Welcome to the LinkLian API" });
 });
 
