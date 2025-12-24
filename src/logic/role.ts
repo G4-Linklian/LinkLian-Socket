@@ -22,7 +22,7 @@ export const getRole = async (req: Request<{}, {}, roleFields>, res: Response) =
         !access &&
         !created_at &&
         !updated_at &&
-        !flag_valid) {
+        !(typeof flag_valid === "boolean")) {
         res.status(400).json({ success: false, message: "No value input!" });
     }
 
@@ -60,7 +60,7 @@ export const getRole = async (req: Request<{}, {}, roleFields>, res: Response) =
         query += ` AND r.updated_at = $${index++}`;
         values.push(updated_at);
     }
-    if (flag_valid) {
+    if (typeof flag_valid === "boolean") {
         query += ` AND r.flag_valid = $${index++}`;
         values.push(flag_valid);
     }
