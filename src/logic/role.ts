@@ -15,16 +15,16 @@
 //         flag_valid,
 //     } = req.body
 
-//     if (
-//         !role_id &&
-//         !role_name &&
-//         !role_type &&
-//         !access &&
-//         !created_at &&
-//         !updated_at &&
-//         !flag_valid) {
-//         res.status(400).json({ success: false, message: "No value input!" });
-//     }
+    if (
+        !role_id &&
+        !role_name &&
+        !role_type &&
+        !access &&
+        !created_at &&
+        !updated_at &&
+        !(typeof flag_valid === "boolean")) {
+        res.status(400).json({ success: false, message: "No value input!" });
+    }
 
 //     // console.log(req.body)
 
@@ -36,34 +36,34 @@
 //     const values: any[] = [];
 //     let index = 1;
 
-//     if (role_id) {
-//         query += ` AND r.role_id = $${index++}`;
-//         values.push(role_id);
-//     }
-//     if (role_name) {
-//         query += ` AND r.role_name = $${index++}`;
-//         values.push(role_name);
-//     }
-//     if (role_type) {
-//         query += ` AND r.role_type = $${index++}`;
-//         values.push(role_type);
-//     }
-//     if (access) {
-//         query += ` AND r.access = $${index++}`;
-//         values.push(access);
-//     }
-//     if (created_at) {
-//         query += ` AND r.created_at = $${index++}`;
-//         values.push(created_at);
-//     }
-//     if (updated_at) {
-//         query += ` AND r.updated_at = $${index++}`;
-//         values.push(updated_at);
-//     }
-//     if (flag_valid) {
-//         query += ` AND r.flag_valid = $${index++}`;
-//         values.push(flag_valid);
-//     }
+    if (role_id) {
+        query += ` AND r.role_id = $${index++}`;
+        values.push(role_id);
+    }
+    if (role_name) {
+        query += ` AND r.role_name = $${index++}`;
+        values.push(role_name);
+    }
+    if (role_type) {
+        query += ` AND r.role_type = $${index++}`;
+        values.push(role_type);
+    }
+    if (access) {
+        query += ` AND r.access = $${index++}`;
+        values.push(access);
+    }
+    if (created_at) {
+        query += ` AND r.created_at = $${index++}`;
+        values.push(created_at);
+    }
+    if (updated_at) {
+        query += ` AND r.updated_at = $${index++}`;
+        values.push(updated_at);
+    }
+    if (typeof flag_valid === "boolean") {
+        query += ` AND r.flag_valid = $${index++}`;
+        values.push(flag_valid);
+    }
 
 //     console.log(query)
 //     console.log(values);
