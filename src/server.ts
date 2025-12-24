@@ -5,6 +5,7 @@ import cors from "cors";
 import routes from "./routes/routes";
 import { verifyToken } from "./middlewares/autho";
 import { Request, Response, NextFunction } from 'express';
+import os from "os";
 
 dotenv.config();
 
@@ -18,7 +19,7 @@ app.use(bodyParser.json());
 app.use("/api", routes);
 
 app.get("/", (req: Request, res: Response) => {
-  res.status(200).json({ success: true, message: "Welcome to the LinkLian API" });
+  res.status(200).json({ success: true, message: "Welcome to the LinkLian API", hostname: os.hostname()});
 });
 
 app.get("/health", (req: Request, res: Response) => {
@@ -27,6 +28,11 @@ app.get("/health", (req: Request, res: Response) => {
 
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   res.status(400).json({ success: false, message: err.message });
+});
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  console.log(`[${os.hostname()}] ${req.method} ${req.originalUrl}`);
+  next();
 });
 
 app.listen(PORT, () => {
