@@ -71,9 +71,11 @@ export const getRole = async (req: Request<{}, {}, roleFields>, res: Response) =
     try {
         const data = await queryPostgresDB(query, globalSmartGISConfig, values);
         res.status(200).json({ success: true, data });
+        return;
     } catch (error) {
         console.error('Error fetching data:', error);
         res.status(500).json({ success: false, message: 'Error fetching data' });
+        return;
     }
 };
 
@@ -140,7 +142,8 @@ export const updateRole = async (req: Request<{}, {}, roleFields>, res: Response
   } = req.body;
 
   if (!role_id) {
-    return res.status(400).json({success: false, message: "role_id is required"});
+    res.status(400).json({success: false, message: "role_id is required"});
+    return;
   }
 
   if (
@@ -149,7 +152,8 @@ export const updateRole = async (req: Request<{}, {}, roleFields>, res: Response
     !access &&
     flag_valid === undefined
   ) {
-    return res.status(400).json({success: false, message: "No fields to update"});
+    res.status(400).json({success: false, message: "No fields to update"});
+    return;
   }
 
   let query = `UPDATE role SET `;
@@ -193,7 +197,8 @@ export const updateRole = async (req: Request<{}, {}, roleFields>, res: Response
     const data = await queryPostgresDB(query, globalSmartGISConfig, values);
 
     if (data.length === 0) {
-      return res.status(404).json({success: false, message: "Role not found"});
+      res.status(404).json({success: false, message: "Role not found"});
+      return;
     }
 
     res.status(200).json({success: true, data});
