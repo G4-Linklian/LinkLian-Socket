@@ -1,4 +1,5 @@
 import express from "express";
+import multer from "multer";
 import { getRole, createRole, updateRole } from "../logic/role"
 
 import { getInstitution, createInstitution, updateInstitution, loginInstitution } from "../logic/institution";
@@ -27,8 +28,10 @@ import {
     deleteSectionEnrollment
 } from "../logic/section";
 
+import  { uploadFile } from "../logic/fileStorage";
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Role Routes
 router.post("/role.get", getRole);
@@ -89,5 +92,7 @@ router.post("/roomLocation.get", getRoomLocation);
 router.post("/roomLocation.create", createRoomLocation);
 router.post("/roomLocation.update", updateRoomLocation);
 
+
+router.post("/upload/:featureName", upload.single('file'), uploadFile);
 
 export default router;
