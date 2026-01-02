@@ -34,7 +34,7 @@ import { AuthenticatedRequest } from "../interface/request.interface";
 import { createUser, getUser } from "../logic/user";
 import { login } from "../logic/auth";
 import { verifyOTP } from "../logic/auth";
-import  { uploadFile } from "../logic/fileStorage";
+import  { uploadFiles, deleteFiles } from "../logic/fileStorage";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -99,8 +99,6 @@ router.post("/roomLocation.create", createRoomLocation);
 router.post("/roomLocation.update", updateRoomLocation);
 
 
-router.post("/upload/:featureName", upload.single('file'), uploadFile);
-
 //User Routes
 router.post("/user.create", createUser);
 router.post("/user.get", getUser);
@@ -136,5 +134,8 @@ router.post(
     res.json({ success: true, message: "Update allowed" });
   }
 );
+// File Storage Routes
+router.post("/uploadFile/:containerName/:folderName", upload.array('files', 10), uploadFiles);
+router.delete("/deleteFile/:containerName", deleteFiles);
 
 export default router;
