@@ -11,6 +11,11 @@ export const getSemester = async (req: Request<{}, {}, semesterFields>, res: Res
         start_date,
         end_date,
         flag_valid,
+        status,
+        offset,
+        limit,
+        sort_by,
+        sort_order
     } = req.body
 
     if (
@@ -19,6 +24,7 @@ export const getSemester = async (req: Request<{}, {}, semesterFields>, res: Res
         !semester &&
         !start_date &&
         !end_date &&
+        !status &&
         !(typeof flag_valid === "boolean")) {
         res.status(400).json({ success: false, message: "No value input!" });
         return;
@@ -28,7 +34,7 @@ export const getSemester = async (req: Request<{}, {}, semesterFields>, res: Res
 
     let query = ``;
 
-    query += 'SELECT * FROM semester s \n'
+    query += 'SELECT *, COUNT(*) OVER() as total_count FROM semester s \n'
     query += 'WHERE 1=1 \n'
 
     const values: any[] = [];
@@ -58,6 +64,24 @@ export const getSemester = async (req: Request<{}, {}, semesterFields>, res: Res
         query += ` AND s.flag_valid = $${index++}`;
         values.push(flag_valid);
     }
+    if (status) {
+        query += ` AND s.status = $${index++}`;
+        values.push(status);
+    }
+    if (sort_by) {
+        const order = sort_order && (sort_order.toLowerCase() === 'desc') ? 'DESC' : 'ASC';
+        query += ` ORDER BY s.${sort_by} ${order} \n`;
+    }
+
+    if (limit) {
+        query += ` LIMIT $${index++} \n`;
+        values.push(limit);
+    }
+
+    if (offset) {
+        query += ` OFFSET $${index++} \n`;
+        values.push(offset);
+    }
 
     // console.log(query)
     // console.log(values);
@@ -80,11 +104,17 @@ export const createSemester = async (req: Request<{}, {}, semesterFields>, res: 
         start_date,
         end_date,
         flag_valid,
+        status,
     } = req.body;
 
     if (!inst_id || !semester || !start_date || !end_date || typeof flag_valid !== "boolean") {
         res.status(400).json({ success: false, message: "Missing required fields!" });
         return;
+    }
+    
+    let sts = status;
+    if (!status) {
+        sts = "pending";
     }
 
     const query = `
@@ -93,12 +123,13 @@ export const createSemester = async (req: Request<{}, {}, semesterFields>, res: 
             semester, 
             start_date, 
             end_date, 
-            flag_valid
+            flag_valid,
+            status
         ) 
-        VALUES ($1, $2, $3, $4, $5)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING *;`
-        
-    const values = [inst_id, semester, start_date, end_date, flag_valid];
+
+    const values = [inst_id, semester, start_date, end_date, flag_valid, sts];
 
     try {
         await queryPostgresDB(query, globalSmartGISConfig, values);
@@ -119,6 +150,7 @@ export const updateSemester = async (req: Request<{}, {}, semesterFields>, res: 
         start_date,
         end_date,
         flag_valid,
+        status,
     } = req.body;
 
     if (!semester_id) {
@@ -150,10 +182,17 @@ export const updateSemester = async (req: Request<{}, {}, semesterFields>, res: 
         query += ` flag_valid = $${index++},`;
         values.push(flag_valid);
     }
+    if (status) {
+        query += ` status = $${index++},`;
+        values.push(status);
+    }
 
     query = query.slice(0, -1);
     query += ` WHERE semester_id = $${index}`;
     values.push(semester_id);
+
+    console.log(query);
+    console.log(values);
 
     try {
         await queryPostgresDB(query, globalSmartGISConfig, values);
@@ -187,7 +226,7 @@ export const createSemesterSubject = async (req: Request<{}, {}, semesterFields>
         ) 
         VALUES ($1, $2, $3)
         RETURNING *;`
-        
+
     const values = [subject_id, semester_id, flag_valid];
 
     try {
