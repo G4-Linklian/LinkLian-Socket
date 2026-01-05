@@ -15,13 +15,19 @@ const TOKEN_EXPIRES_IN: StringValue =
   (process.env.TOKEN_EXPIRES_IN as StringValue) || "30d";
 
 /* ===== TOKEN GENERATOR ===== */
-export const generateToken = (payload: JwtPayload): string => {
+
+
+export const generateToken = (
+  payload: JwtPayload,
+  expiresIn?: StringValue | number
+): string => {
   const options: SignOptions = {
-    expiresIn: TOKEN_EXPIRES_IN,
+    expiresIn: expiresIn ?? TOKEN_EXPIRES_IN,
   };
 
   return jwt.sign(payload, JWT_SECRET, options);
 };
+
 
 /* ===== AUTH MIDDLEWARE ===== */
 export const authenticate =

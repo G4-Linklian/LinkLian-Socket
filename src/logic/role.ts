@@ -65,8 +65,8 @@ export const getRole = async (req: Request<{}, {}, roleFields>, res: Response) =
         values.push(flag_valid);
     }
 
-//     console.log(query)
-//     console.log(values);
+    console.log(query)
+    console.log(values);
 
     try {
         const data = await queryPostgresDB(query, globalSmartGISConfig, values);

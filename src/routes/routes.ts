@@ -52,7 +52,7 @@ import {
     deleteEduLevelNorm
 } from "../logic/eduLevel";
 
-import { loginInitial, resetPassword, verifyAuthContext } from "../logic/auth";
+import { resetPassword, verifyAuthContext ,login,verifyOTP,resendOTP ,forgotPassword } from "../logic/auth";
 import { authenticate } from "../middlewares/authen";
 import { AuthenticatedRequest } from "../interface/request.interface";
 import { createUser, getUser } from "../logic/user";
@@ -148,18 +148,18 @@ router.post("/user.sys.get", getUserSys);
 
 // Auth Routes
 router.post("/auth.verify", verifyAuthContext);
-router.post("/auth.login-initial", loginInitial);
 router.post("/auth.reset-password", resetPassword);
-router.post("/auth.login", login); // ✅ เพิ่ม
+router.post("/auth.forgot-password", forgotPassword);
+router.post("/auth.login", login); 
 router.post("/auth.verify-otp", verifyOTP);
+router.post("/auth.resend-otp", resendOTP);
 
 
-/**
- * ใช้แค่ตรวจว่า token ใช้ได้หรือไม่
- */
+// ใช้แค่ตรวจว่า token ใช้ได้หรือไม่
+//ลบได้ใช้เทสเฉยๆ
 router.post(
   "/auth.test",
-  authenticate(), // ไม่ส่ง resource/action
+  authenticate(), 
   (req: AuthenticatedRequest, res) => {
     res.status(200).json({
       success: true,

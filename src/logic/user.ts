@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { queryPostgresDB, globalSmartGISConfig } from "../config/db";
 import { CreateUserPayload, UserFields } from "../interface/user.interface";
 import { generateInitialPassword } from "../utils/passwordGenerator";
-import { hashPassword } from "../utils/passwordHashing";
+import { hashPasswordWithSalt } from "../utils/auth.function";
 import { sendInitialPasswordEmail } from "../utils/mailerSending";
 
 /* CREATE USER */
@@ -11,7 +11,13 @@ export const createUser = async (
   res: Response
 ) => {
   const rawPassword = generateInitialPassword();
-  const hashedPassword = await hashPassword(rawPassword);
+const hashedPassword = await hashPasswordWithSalt(rawPassword);
+
+//example requiring fields
+    // if (!inst_email || !inst_password || !inst_name_th || !inst_name_en || !inst_abbr_th || !inst_abbr_en || !inst_type || !inst_phone || !website || !address || !subdistrict || !district || !province || !postal_code || !logo_url || !docs_url) {
+    //     res.status(400).json({ success: false, message: "Missing required fields!" });
+    //     return;
+    // }
 
 const query = `
   INSERT INTO user_sys (
@@ -37,8 +43,7 @@ const query = `
   )
 `;
 
-
-const values = [
+const values = [ 
   req.body.email,
   hashedPassword,
   req.body.first_name,
@@ -53,6 +58,8 @@ const values = [
 
 
   try {
+
+    //ดัก error ด้วย
     await queryPostgresDB(query, globalSmartGISConfig, values);
     await sendInitialPasswordEmail(req.body.email, rawPassword);
 

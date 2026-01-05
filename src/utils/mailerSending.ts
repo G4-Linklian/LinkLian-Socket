@@ -14,14 +14,6 @@ export const sendInitialPasswordEmail = async (
   to: string,
   password: string
 ) => {
-//เข็คการมีอยู่ของ env
-  // console.log("SMTP_HOST:", process.env.SMTP_HOST);
-  // console.log("SMTP_PORT:", process.env.SMTP_PORT);
-  // console.log("SMTP_USER:", process.env.SMTP_USER);
-  // console.log(
-  //   "SMTP_PASS:",
-  //   process.env.SMTP_PASS ? "SET" : "MISSING"
-// );
 
   await transporter.sendMail({
     from: `"LinkLian System" <${process.env.SMTP_USER}>`,
