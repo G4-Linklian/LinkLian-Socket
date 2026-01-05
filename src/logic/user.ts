@@ -1,9 +1,9 @@
 import { Request, Response } from "express";
 import { queryPostgresDB, globalSmartGISConfig } from "../config/db";
 import { CreateUserPayload, UserFields } from "../interface/user.interface";
-import { generateInitialPassword } from "../support/passwordGenerator";
-import { hashPassword } from "../support/passwordHashing";
-import { sendInitialPasswordEmail } from "../support/mailerSending";
+import { generateInitialPassword } from "../utils/passwordGenerator";
+import { hashPassword } from "../utils/passwordHashing";
+import { sendInitialPasswordEmail } from "../utils/mailerSending";
 
 /* CREATE USER */
 export const createUser = async (

@@ -5,15 +5,15 @@ import crypto from "crypto";
 import { queryPostgresDB, globalSmartGISConfig } from "../config/db";
 import { JwtPayload } from "../interface/auth.interface";
 import { generateToken } from "../middlewares/authen";
-import { generateOTP } from "../support/generateOTP";
-import { sendOTPEmail } from "../support/mailerSending";
+import { generateOTP } from "../utils/generateOTP";
+import { sendOTPEmail } from "../utils/mailerSending";
 import { v4 as uuidv4 } from "uuid";
 import {
   saveOtpSession,
   getOtpSession,
   markOtpUsed,
   deleteOtpSession,
-} from "../support/otpStore";
+} from "../utils/otpStore";
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 

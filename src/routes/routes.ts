@@ -3,6 +3,7 @@ import multer from "multer";
 // import { getRole, createRole, updateRole } from "../logic/role"
 
 import { getInstitution, createInstitution, updateInstitution, loginInstitution } from "../logic/institution";
+import { getUserSys } from "../logic/user_sys";
 
 import { getProgramHighschool, createProgramHighschool, updateProgramHighschool } from "../logic/programHighschool";
 import { getProgramUniversity, createProgramUniversity, updateProgramUniversity } from "../logic/programUniversity";
@@ -139,6 +140,10 @@ router.post("/edu.level.norm.delete", deleteEduLevelNorm);
 //User Routes
 router.post("/user.create", createUser);
 router.post("/user.get", getUser);
+
+
+// UserSys Routes
+router.post("/user.sys.get", getUserSys);
 
 
 // Auth Routes
