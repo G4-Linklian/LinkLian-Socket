@@ -1,155 +1,112 @@
 import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import crypto from "crypto";
 import { queryPostgresDB, globalSmartGISConfig } from "../config/db";
 import { JwtPayload } from "../interface/auth.interface";
 import { generateToken } from "../middlewares/authen";
-import { generateOTP } from "../support/generateOTP";
-import { sendOTPEmail } from "../support/mailerSending";
+import { sendOTPEmail , sendInitialPasswordEmail } from "../utils/mailerSending";
+import { generateInitialPassword } from "../utils/passwordGenerator";
 import { v4 as uuidv4 } from "uuid";
+import {
+  verifyPasswordWithSalt,
+  hashPasswordWithSalt,
+  generateOTP,
+} from "../utils/auth.function";
 import {
   saveOtpSession,
   getOtpSession,
   markOtpUsed,
   deleteOtpSession,
-} from "../support/otpStore";
+} from "../utils/otpStore";
+
+const USER_GROUP_ROLE_MAP: Record<string, string[]> = {
+  student: ["high school student", "uni student"],
+  teacher: ["teacher", "instructor"],
+};
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 
+
+//ตรวจข้อมูลความพร้อมของ user เข่น Token , reset password y/n? , user valid y/n?
+//using route auth.verify
 export const verifyAuthContext = async (
-  req: Request<{}, {}, { token?: string }>,
+  req: Request,
   res: Response
 ) => {
-  const { token } = req.body;
+  const authHeader = req.headers.authorization;
 
-  // guard clause (pattern เดียวกับ role)
-  if (!token) {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(400).json({
       success: false,
-      message: "No value input!",
+      message: "No token provided",
     });
   }
+
+  const token = authHeader.split(" ")[1];
 
   let payload: JwtPayload;
 
   try {
-    payload = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
+    payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
   } catch {
     return res.status(401).json({
       success: false,
       message: "Invalid or expired token",
     });
   }
-
-  /**
-   * OPTIONAL: re-check role from DB
-   * ใช้ในกรณี role อาจถูก disable
-   */
-  const roleCheck = await queryPostgresDB(
+  const userCheck = await queryPostgresDB(
     `
-    SELECT role_name, flag_valid
-    FROM role
-    WHERE role_id = $1
-    LIMIT 1
-    `,
+  SELECT flag_valid
+  FROM user_sys
+  WHERE user_sys_id = $1
+  LIMIT 1
+  `,
     globalSmartGISConfig,
-    [payload.role_id]
+    [payload.user_id]
   );
 
-  if (roleCheck.length === 0 || !roleCheck[0].flag_valid) {
-    return res.status(403).json({
+  if (userCheck.length === 0) {
+    return res.status(401).json({
       success: false,
-      message: "Role is disabled",
+      message: "User not found",
     });
   }
 
-  /**
-   * ส่งข้อมูล “สำหรับแสดงผล” เท่านั้น
-   */
+  if (!userCheck[0].flag_valid) {
+    return res.status(403).json({
+      success: false,
+      message: "Password not reset",
+    });
+  }
+
   return res.status(200).json({
     success: true,
     data: {
-      user_id: payload.user_id,
+      user_id: Number(payload.user_id), // 🔥 บังคับ type
       username: payload.username,
       role_id: payload.role_id,
       role_name: payload.role_name,
       access: payload.access,
-
     },
   });
 };
 
-export const loginInitial = async (
-  req: Request<{}, {}, { email?: string; password?: string }>,
-  res: Response
-) => {
-  const { email, password } = req.body;
-
-  if (!email || !password) {
-    return res.status(400).json({
-      success: false,
-      message: "No value input!",
-    });
-  }
-
-  const query = `
-    SELECT
-      user_sys_id,
-      password,
-      flag_valid
-    FROM user_sys
-    WHERE email = $1
-    LIMIT 1
-  `;
-
-  try {
-    const data = await queryPostgresDB(query, globalSmartGISConfig, [email]);
-
-    if (data.length === 0) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid credentials",
-      });
-    }
-
-    const user = data[0];
-
-    // ❗ ถ้าเคย reset แล้ว ไม่ควรใช้ initial อีก
-    if (user.flag_valid === true) {
-      return res.status(403).json({
-        success: false,
-        message: "Initial password already used",
-      });
-    }
-
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid credentials",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "First time login success. Please reset password.",
-    });
-
-  } catch (error) {
-    console.error("loginInitial error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Initial login failed",
-    });
-  }
-};
 
 export const login = async (
-  req: Request<{}, {}, { email?: string; password?: string }>,
+  req: Request<
+    {},
+    {},
+    {
+      email?: string;
+      password?: string;
+      user_group?: "student" | "teacher";
+      remember_me?: boolean;
+
+    }
+  >,
   res: Response
 ) => {
-  const { email, password } = req.body;
+  const { email, password, user_group, remember_me } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({
@@ -186,7 +143,25 @@ export const login = async (
 
     const user = data[0];
 
-    // ❗ role disable
+    if (user_group) {
+      const allowedRoles = USER_GROUP_ROLE_MAP[user_group];
+
+      if (!allowedRoles) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid user group",
+        });
+      }
+
+      if (!allowedRoles.includes(user.role_name)) {
+        return res.status(403).json({
+          success: false,
+          message: "Role mismatch",
+        });
+      }
+    }
+
+    // Role ถูกปิดใช้งาน เป็น False
     if (!user.role_valid) {
       return res.status(403).json({
         success: false,
@@ -194,57 +169,68 @@ export const login = async (
       });
     }
 
-    // 🔑 ยังไม่ reset password
+    // ยังไม่ reset password ส่ง require_reset_password ไปหน้าบ้านเพื่อเรียก bottom sheet ให่้ reset 
+    //ใช้ Flag valid กำหนด
     if (user.user_valid === false) {
       return res.status(200).json({
         success: true,
         require_reset_password: true,
       });
     }
+    
 
-    // 🔐 check password
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) {
+    // /* ===== PASSWORD CHECK (WITH SALT) ===== */
+    const passwordMatch = await verifyPasswordWithSalt(
+      password,
+      user.password
+    );
+
+    if (!passwordMatch) {
       return res.status(401).json({
         success: false,
         message: "Invalid credentials",
       });
     }
 
-    // ✅ ทุก login ต้อง OTP
+
+    // check password ผ่านแล้ว
     const otp = generateOTP();
     const otpSessionId = uuidv4();
 
     saveOtpSession(otpSessionId, {
       user_id: user.user_sys_id,
       otp,
-      expires_at: Date.now() + 2 * 60 * 1000,
+      expires_at: Date.now() + 2 * 60 * 1000, //2 mins
       used: false,
     });
 
     await sendOTPEmail(user.email, otp);
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       require_otp: true,
-      otp_session_id: otpSessionId, // frontend ส่งต่อไป verify
+      otp_session_id: otpSessionId,
+      remember_me: remember_me === true,
+
     });
+    return;
 
   } catch (error) {
     console.error("Auth login error:", error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: "Login failed",
     });
+    return;
   }
 };
 
-
+// ตรวจความถูกต้อง OTP
 export const verifyOTP = async (
-  req: Request<{}, {}, { otp?: string; otp_session_id?: string }>,
+  req: Request<{}, {}, { otp?: string; otp_session_id?: string; remember_me?: boolean }>,
   res: Response
 ) => {
-  const { otp, otp_session_id } = req.body;
+  const { otp, otp_session_id, remember_me } = req.body;
 
   if (!otp || !otp_session_id) {
     return res.status(400).json({
@@ -284,7 +270,6 @@ export const verifyOTP = async (
     });
   }
 
-  // ✅ OTP ผ่าน
   markOtpUsed(otp_session_id);
   deleteOtpSession(otp_session_id);
 
@@ -295,9 +280,9 @@ export const verifyOTP = async (
     [session.user_id]
   );
 
-// 🔥 ดึงข้อมูล user + role ใหม่จาก DB
-const userRows = await queryPostgresDB(
-  `
+  // ดึงข้อมูล user + role ใหม่จาก DB
+  const userRows = await queryPostgresDB(
+    `
   SELECT
     u.user_sys_id,
     u.email,
@@ -309,30 +294,88 @@ const userRows = await queryPostgresDB(
   WHERE u.user_sys_id = $1
   LIMIT 1
   `,
-  globalSmartGISConfig,
-  [session.user_id]
-);
-const user = userRows[0];
+    globalSmartGISConfig,
+    [session.user_id]
+  );
+  const user = userRows[0];
 
   // generate token ครั้งเดียวตรงนี้
-const payload: JwtPayload = {
-  user_id: user.user_sys_id,
-  username: user.email,
-  role_id: user.role_id,
-  role_name: user.role_name,
-  access: user.access,
-  otp_verified: true,
-};
+  const payload: JwtPayload = {
+    user_id: user.user_sys_id,
+    username: user.email,
+    role_id: user.role_id,
+    role_name: user.role_name,
+    access: user.access,
+    otp_verified: true,
+  };
 
+  const expiresIn = remember_me ? "30d" : "15d";
 
-  const token = generateToken(payload);
+  const token = generateToken(payload, expiresIn);
 
   return res.status(200).json({
     success: true,
     token,
+    user_id: user.user_sys_id, //ส่งไปหน้าบ้านกัน Email เดิมเเต่ login เข้าใหม่ครั้งเเรกใช้ Token เดิม
   });
 };
 
+export const resendOTP = async (
+  req: Request<{}, {}, { otp_session_id?: string }>,
+  res: Response
+) => {
+  const { otp_session_id } = req.body;
+
+  if (!otp_session_id) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing otp session",
+    });
+  }
+
+  const oldSession = getOtpSession(otp_session_id);
+
+  if (!oldSession) {
+    return res.status(401).json({
+      success: false,
+      message: "OTP session expired",
+    });
+  }
+
+  // ❌ invalidate old session
+  deleteOtpSession(otp_session_id);
+
+  // ✅ generate new OTP + session
+  const newOtp = generateOTP();
+  const newSessionId = uuidv4();
+
+  saveOtpSession(newSessionId, {
+    user_id: oldSession.user_id,
+    otp: newOtp,
+    expires_at: Date.now() + 2 * 60 * 1000,
+    used: false,
+  });
+
+  const rows = await queryPostgresDB(
+    `SELECT email FROM user_sys WHERE user_sys_id = $1 LIMIT 1`,
+    globalSmartGISConfig,
+    [oldSession.user_id]
+  );
+
+  if (rows.length === 0) {
+    return res.status(404).json({
+      success: false,
+      message: "User not found",
+    });
+  }
+
+  await sendOTPEmail(rows[0].email, newOtp);
+
+  return res.status(200).json({
+    success: true,
+    otp_session_id: newSessionId,
+  });
+};
 
 export const resetPassword = async (
   req: Request<{}, {}, {
@@ -345,7 +388,6 @@ export const resetPassword = async (
 ) => {
   const { email, password, new_password, confirm_password } = req.body;
 
-  // ===== Guard: input =====
   if (!email || !password || !new_password || !confirm_password) {
     return res.status(400).json({
       success: false,
@@ -353,7 +395,6 @@ export const resetPassword = async (
     });
   }
 
-  // ===== Guard: new password match =====
   if (new_password !== confirm_password) {
     return res.status(400).json({
       success: false,
@@ -387,7 +428,6 @@ export const resetPassword = async (
 
     const user = data[0];
 
-    // ===== Guard: already reset =====
     if (user.flag_valid === true) {
       return res.status(400).json({
         success: false,
@@ -395,8 +435,8 @@ export const resetPassword = async (
       });
     }
 
-    // ===== Guard: check old password =====
-    const match = await bcrypt.compare(password, user.password);
+
+    const match = await verifyPasswordWithSalt(password, user.password);
     if (!match) {
       return res.status(401).json({
         success: false,
@@ -404,8 +444,7 @@ export const resetPassword = async (
       });
     }
 
-    // ===== Update password =====
-    const hashedPassword = await bcrypt.hash(new_password, 10);
+    const hashed = await hashPasswordWithSalt(new_password);
 
     await queryPostgresDB(
       `
@@ -417,7 +456,7 @@ export const resetPassword = async (
       WHERE user_sys_id = $2
       `,
       globalSmartGISConfig,
-      [hashedPassword, user.user_sys_id]
+      [hashed, user.user_sys_id]
     );
 
     return res.status(200).json({
@@ -434,3 +473,71 @@ export const resetPassword = async (
   }
 };
 
+
+export const forgotPassword = async (
+  req: Request<{}, {}, { email?: string }>,
+  res: Response
+) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: "Email is required",
+    });
+  }
+
+  try {
+    // 1️⃣ check user
+    const users = await queryPostgresDB(
+      `
+      SELECT user_sys_id, flag_valid
+      FROM user_sys
+      WHERE email = $1
+      LIMIT 1
+      `,
+      globalSmartGISConfig,
+      [email]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Email not found",
+      });
+    }
+
+    const user = users[0];
+
+    // 2️⃣ generate temporary password
+    const tempPassword = generateInitialPassword();
+const hashedPassword = await hashPasswordWithSalt(tempPassword);
+    // 3️⃣ update password + force reset
+    await queryPostgresDB(
+      `
+      UPDATE user_sys
+      SET
+        password = $1,
+        flag_valid = false,
+        updated_at = NOW()
+      WHERE user_sys_id = $2
+      `,
+      globalSmartGISConfig,
+      [hashedPassword, user.user_sys_id]
+    );
+
+    // 4️⃣ send email
+    await sendInitialPasswordEmail(email, tempPassword);
+
+    return res.status(200).json({
+      success: true,
+      message: "Temporary password has been sent to your email",
+    });
+  } catch (error) {
+    console.error("forgotPassword error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Forgot password failed",
+    });
+  }
+};

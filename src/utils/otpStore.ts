@@ -1,3 +1,5 @@
+
+//ย้ายไปใน interface
 interface OtpSession {
   user_id: number;
   otp: string;

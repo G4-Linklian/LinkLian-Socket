@@ -13,21 +13,12 @@ export const getSubject = async (req: Request<{}, {}, subjectFields>, res: Respo
         credit,
         hour_per_week,
         flag_valid,
-
-        // learningAreaFields
-        learning_area_name,
-
-        // semesterFields
-        semester_id,
-        semester,
-        start_date,
-        end_date,
-
-        // institutionFields
         inst_id,
-        inst_name_th,
-        inst_name_en
-
+        offset,
+        limit,
+        sort_by,
+        sort_order,
+        keyword
     } = req.body;
 
     if (
@@ -38,14 +29,7 @@ export const getSubject = async (req: Request<{}, {}, subjectFields>, res: Respo
         !name_en &&
         !credit &&
         !hour_per_week &&
-        !learning_area_name &&
-        !semester_id &&
-        !semester &&
-        !start_date &&
-        !end_date &&
         !inst_id &&
-        !inst_name_th &&
-        !inst_name_en &&
         !(typeof flag_valid === "boolean")) {
         res.status(400).json({ success: false, message: "No value input!" });
         return;
@@ -53,12 +37,12 @@ export const getSubject = async (req: Request<{}, {}, subjectFields>, res: Respo
 
     let query = ``;
 
-    query += 'SELECT * FROM subject s \n';
+    query += 'SELECT *, COUNT(*) OVER() as total_count FROM subject s \n';
 
     query += 'LEFT JOIN learning_area la ON s.learning_area_id = la.learning_area_id \n';
-    query += 'LEFT JOIN institution i ON la.inst_id = i.inst_id \n';
-    query += 'LEFT JOIN semester_subject_normalize ssn ON s.subject_id = ssn.subject_id \n';
-    query += 'LEFT JOIN semester sem ON ssn.semester_id = sem.semester_id \n';
+    // query += 'LEFT JOIN institution i ON la.inst_id = i.inst_id \n';
+    // query += 'LEFT JOIN semester_subject_normalize ssn ON s.subject_id = ssn.subject_id \n';
+    // query += 'LEFT JOIN semester sem ON ssn.semester_id = sem.semester_id \n';
 
     query += 'WHERE 1=1 \n';
 
@@ -100,49 +84,49 @@ export const getSubject = async (req: Request<{}, {}, subjectFields>, res: Respo
         values.push(hour_per_week);
     }
 
-    if (learning_area_name) {
-        query += ` AND la.learning_area_name = $${index++}`;
-        values.push(learning_area_name);
-    }
-
-    if (semester_id) {
-        query += ` AND sem.semester_id = $${index++}`;
-        values.push(semester_id);
-    }
-
-    if (semester) {
-        query += ` AND sem.semester = $${index++}`;
-        values.push(semester);
-    }
-
-    if (start_date) {
-        query += ` AND sem.start_date = $${index++}`;
-        values.push(start_date);
-    }
-
-    if (end_date) {
-        query += ` AND sem.end_date = $${index++}`;
-        values.push(end_date);
-    }
-
     if (inst_id) {
-        query += ` AND i.inst_id = $${index++}`;
+        query += ` AND la.inst_id = $${index++}`;
         values.push(inst_id);
     }
 
-    if (inst_name_th) {
-        query += ` AND i.inst_name_th = $${index++}`;
-        values.push(inst_name_th);
-    }
+    // if (inst_name_th) {
+    //     query += ` AND i.inst_name_th = $${index++}`;
+    //     values.push(inst_name_th);
+    // }
 
-    if (inst_name_en) {
-        query += ` AND i.inst_name_en = $${index++}`;
-        values.push(inst_name_en);
-    }
+    // if (inst_name_en) {
+    //     query += ` AND i.inst_name_en = $${index++}`;
+    //     values.push(inst_name_en);
+    // }
 
     if (typeof flag_valid === "boolean") {
         query += ` AND s.flag_valid = $${index++}`;
         values.push(flag_valid);
+    }
+
+    if (keyword) {
+        // ใช้ AND (...) ครอบเพื่อให้เงื่อนไข OR ทำงานถูกต้องในกลุ่มของมัน
+        // ใช้ ILIKE เพื่อให้ค้นหาแบบไม่สนตัวพิมพ์เล็ก/ใหญ่ (Case Insensitive)
+        // ใช้ % หน้าหลัง เพื่อหาคำที่มีส่วนประกอบนี้
+        query += ` AND (s.subject_code ILIKE $${index} OR s.name_th ILIKE $${index})`;
+        values.push(`%${keyword}%`);
+        index++;
+    }
+
+    if (sort_by) {
+        const order = sort_order && (sort_order.toLowerCase() === 'desc') ? 'DESC' : 'ASC';
+        query += ` ORDER BY s.${sort_by} ${order} \n`;
+    }
+
+
+    if (limit) {
+        query += ` LIMIT $${index++} \n`;
+        values.push(limit);
+    }
+
+    if (offset) {
+        query += ` OFFSET $${index++} \n`;
+        values.push(offset);
     }
 
     try {
@@ -164,17 +148,17 @@ export const createSubject = async (req: Request<{}, {}, subjectFields>, res: Re
         name_en,
         credit,
         hour_per_week,
-        flag_valid
     } = req.body;
 
-    if (!learning_area_id || !subject_code || !name_th || !name_en || !credit || !hour_per_week || typeof flag_valid !== "boolean") {
+    if (!learning_area_id || !subject_code || !name_th || !name_en || !credit || !hour_per_week) {
         res.status(400).json({ success: false, message: "Missing required fields!" });
         return;
     }
 
-    const query = `INSERT INTO subject (learning_area_id, subject_code, name_th, name_en, credit, hour_per_week, flag_valid) 
-                   VALUES ($1, $2, $3, $4, $5, $6, $7)`;
-    const values = [learning_area_id, subject_code, name_th, name_en, credit, hour_per_week, flag_valid];
+    const query = `INSERT INTO subject (learning_area_id, subject_code, name_th, name_en, credit, hour_per_week, created_at, updated_at) 
+                   VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`;
+    const values = [learning_area_id, subject_code, name_th, name_en, credit, hour_per_week];
+
 
     try {
         await queryPostgresDB(query, globalSmartGISConfig, values);
@@ -237,6 +221,8 @@ export const updateSubject = async (req: Request<{}, {}, subjectFields>, res: Re
         query += ` flag_valid = $${index++},`;
         values.push(flag_valid);
     }
+
+    query += ` updated_at = NOW() \n`;
 
     query = query.slice(0, -1);
     query += ` WHERE subject_id = $${index}`;

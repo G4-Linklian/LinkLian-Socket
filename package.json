@@ -12,9 +12,10 @@
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "multer": "^2.0.2",
     "nodemailer": "^7.0.12",
     "pg": "^8.16.3",
-    "uuid": "^13.0.0"
+    "uuid": "8"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
@@ -34,6 +35,5 @@
     "dev": "nodemon src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js"
-  },
-  "packageManager": "yarn@4.12.0+sha512.f45ab632439a67f8bc759bf32ead036a1f413287b9042726b7cc4818b7b49e14e9423ba49b18f9e06ea4941c1ad062385b1d8760a8d5091a1a31e5f6219afca8"
+  }
 }
