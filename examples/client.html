@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Socket Chat & Noti</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 20px auto; padding: 0 20px; }
+        .container { border: 1px solid #ccc; padding: 20px; border-radius: 8px; }
+        .status { font-weight: bold; margin-bottom: 10px; }
+        .status.online { color: green; }
+        .status.offline { color: red; }
+        
+        /* กล่อง Chat */
+        #chat-box { 
+            height: 300px; 
+            border: 1px solid #ddd; 
+            overflow-y: scroll; 
+            padding: 10px; 
+            margin-bottom: 10px; 
+            background: #f9f9f9; 
+        }
+        .message { margin-bottom: 5px; padding: 5px; border-radius: 4px; }
+        .message.me { background-color: #d1e7dd; text-align: right; } /* ข้อความเรา */
+        .message.other { background-color: #fff; border: 1px solid #eee; } /* ข้อความคนอื่น */
+        .noti { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; } /* แจ้งเตือน */
+
+        .input-group { margin-bottom: 15px; }
+        label { display: inline-block; width: 100px; }
+    </style>
+</head>
+<body>
+
+    <h2>🛠️ WebSocket Tester (Chat + Noti)</h2>
+
+    <div class="container">
+        <div class="input-group">
+            <label>UserID:</label>
+            <input type="text" id="userId" value="user_001" placeholder="ระบุ ID ผู้ใช้">
+        </div>
+        <div class="input-group">
+            <label>Room ID:</label>
+            <input type="text" id="roomId" value="room_A" placeholder="ระบุห้องแชท">
+        </div>
+        <button onclick="connectSocket()">🔌 Connect & Join Room</button>
+        <div id="status" class="status offline">Status: Disconnected</div>
+
+        <hr>
+
+        <h3>Chat Room</h3>
+        <div id="chat-box"></div>
+
+        <div class="input-group">
+            <input type="text" id="msgInput" placeholder="พิมพ์ข้อความ..." style="width: 70%;">
+            <button onclick="sendMessage()" disabled id="sendBtn">Send</button>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        let currentUserId = "";
+        let currentRoomId = "";
+
+        const statusDiv = document.getElementById('status');
+        const chatBox = document.getElementById('chat-box');
+        const sendBtn = document.getElementById('sendBtn');
+
+        // 1. ฟังก์ชันเชื่อมต่อ Socket
+        function connectSocket() {
+            if (ws) {
+                ws.close(); // ปิดอันเก่าก่อนถ้ามี
+            }
+
+            currentUserId = document.getElementById('userId').value;
+            currentRoomId = document.getElementById('roomId').value;
+
+            // เปลี่ยน URL ตาม Server ของคุณ (เช่น ws://localhost:8080)
+            ws = new WebSocket('ws://localhost:7070');
+
+            ws.onopen = () => {
+                statusDiv.innerText = 'Status: Connected ✅';
+                statusDiv.className = 'status online';
+                sendBtn.disabled = false;
+
+                console.log("Connected to Server");
+
+                // ส่งคำสั่ง Join Room ทันทีที่ต่อติด
+                const joinPayload = {
+                    type: 'JOIN_ROOM',
+                    payload: {
+                        userID: currentUserId,
+                        conversationID: currentRoomId
+                    }
+                };
+                ws.send(JSON.stringify(joinPayload));
+                
+                // (Optional) ส่ง REGISTER_NOTI ด้วยก็ได้
+                ws.send(JSON.stringify({
+                    type: 'REGISTER_NOTI',
+                    payload: { userID: currentUserId }
+                }));
+
+                appendLog(`🔵 System: Joined room "${currentRoomId}" as "${currentUserId}"`);
+            };
+
+            ws.onmessage = (event) => {
+                const response = JSON.parse(event.data);
+                console.log("Receive:", response);
+
+                // 2. แยกประเภทข้อความที่ได้รับ
+                if (response.type === 'CHAT_RECEIVE') {
+                    // แสดงข้อความแชท
+                    const msgData = response.data;
+                    const isMe = msgData.send_by === currentUserId;
+                    appendLog(`${msgData.send_by}: ${msgData.message_text}`, isMe ? 'me' : 'other');
+                
+                } else if (response.type === 'NOTIFICATION') {
+                    // แสดงแจ้งเตือน
+                    const notiData = response.data;
+                    appendLog(`🔔 NOTIFICATION: ${notiData.title} - ${notiData.message}`, 'noti');
+                    alert(`แจ้งเตือนใหม่!\n${notiData.title}`);
+                }
+            };
+
+            ws.onclose = () => {
+                statusDiv.innerText = 'Status: Disconnected ❌';
+                statusDiv.className = 'status offline';
+                sendBtn.disabled = true;
+                appendLog(`🔴 System: Disconnected`);
+            };
+        }
+
+        // 3. ฟังก์ชันส่งข้อความ
+        function sendMessage() {
+            const input = document.getElementById('msgInput');
+            const text = input.value;
+
+            if (text && ws && ws.readyState === WebSocket.OPEN) {
+                const msgPayload = {
+                    type: 'CHAT_SEND',
+                    payload: {
+                        userID: currentUserId,
+                        conversationID: currentRoomId,
+                        message_text: text
+                    }
+                };
+                
+                ws.send(JSON.stringify(msgPayload));
+                input.value = ''; // เคลียร์ช่อง
+            }
+        }
+
+        // Helper: ฟังก์ชันช่วยแสดงผลลงในกล่อง
+        function appendLog(text, type = 'other') {
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.innerText = text;
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight; // เลื่อนลงล่างสุดเสมอ
+        }
+
+        // กด Enter เพื่อส่งได้
+        document.getElementById('msgInput').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+    </script>
+</body>
+</html>
