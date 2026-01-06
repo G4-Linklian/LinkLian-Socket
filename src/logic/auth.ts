@@ -177,18 +177,20 @@ export const login = async (
         require_reset_password: true,
       });
     }
-    // /* ===== PASSWORD CHECK (WITH SALT) ===== */
-    // const passwordMatch = await verifyPasswordWithSalt(
-    //   password,
-    //   user.password
-    // );
+    
 
-    // if (!passwordMatch) {
-    //   return res.status(401).json({
-    //     success: false,
-    //     message: "Invalid credentials",
-    //   });
-    // }
+    // /* ===== PASSWORD CHECK (WITH SALT) ===== */
+    const passwordMatch = await verifyPasswordWithSalt(
+      password,
+      user.password
+    );
+
+    if (!passwordMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
 
 
     // check password ผ่านแล้ว
@@ -204,20 +206,22 @@ export const login = async (
 
     await sendOTPEmail(user.email, otp);
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       require_otp: true,
-      otp_session_id: otpSessionId, //ส่งไปเก็บใน memory เพื่อตรวจว่าที่กรอกมาถูกไหม
-      remember_me: remember_me === true, // 🔥 ส่งต่อ
+      otp_session_id: otpSessionId,
+      remember_me: remember_me === true,
 
     });
+    return;
 
   } catch (error) {
     console.error("Auth login error:", error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: "Login failed",
     });
+    return;
   }
 };
 
@@ -266,7 +270,6 @@ export const verifyOTP = async (
     });
   }
 
-  // ✅ OTP ผ่าน
   markOtpUsed(otp_session_id);
   deleteOtpSession(otp_session_id);
 
@@ -306,7 +309,7 @@ export const verifyOTP = async (
     otp_verified: true,
   };
 
-  const expiresIn = remember_me ? "30d" : "15d"; // 🔥 หัวใจของระบบ
+  const expiresIn = remember_me ? "30d" : "15d";
 
   const token = generateToken(payload, expiresIn);
 
@@ -353,7 +356,6 @@ export const resendOTP = async (
     used: false,
   });
 
-  // 🔥 ดึง email user
   const rows = await queryPostgresDB(
     `SELECT email FROM user_sys WHERE user_sys_id = $1 LIMIT 1`,
     globalSmartGISConfig,

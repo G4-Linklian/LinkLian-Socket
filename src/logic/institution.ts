@@ -136,7 +136,6 @@ export const createInstitution = async (req: Request<{}, {}, institutionFields>,
     `;
     const values = [inst_email, hashedPassword, inst_name_th, inst_name_en, inst_abbr_th, inst_abbr_en, inst_type, inst_phone, website, address, subdistrict, district, province, postal_code, logo_url, docs_url, "pending"];
 
-    console.log("query", query);
 
     try {
         await queryPostgresDB(query, globalSmartGISConfig, values);
@@ -290,7 +289,6 @@ export const loginInstitution = async (req: Request<{}, {}, institutionFields>, 
         const instValues = [inst_email];
         const instData = await queryPostgresDB(instQuery, globalSmartGISConfig, instValues);
 
-        // console.log("instData: ", instData);
 
         if (instData.length === 0) {
             res.status(401).json({ success: false, message: "Institution not found" });
@@ -298,9 +296,7 @@ export const loginInstitution = async (req: Request<{}, {}, institutionFields>, 
         }
 
         const institution = instData[0];
-
         const isMatch = await verifyPasswordWithSalt(inst_password, institution.inst_password)
-        console.log("Status: ", isMatch)
 
         if (!isMatch) {
             res.status(401).json({ success: false, message: "Incorrect password" });

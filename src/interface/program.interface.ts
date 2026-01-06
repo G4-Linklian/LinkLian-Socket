@@ -17,4 +17,6 @@ export interface programFields {
     sort_by?: string;
     sort_order?: 'asc' | 'desc';
     parent_ids?: number;
+    keyword?: string;
+    user_sys_id?: number;
 }

@@ -30,7 +30,6 @@ export const getSemester = async (req: Request<{}, {}, semesterFields>, res: Res
         return;
     }
 
-    // console.log(req.body)
 
     let query = ``;
 
@@ -83,8 +82,6 @@ export const getSemester = async (req: Request<{}, {}, semesterFields>, res: Res
         values.push(offset);
     }
 
-    // console.log(query)
-    // console.log(values);
 
     try {
         const data = await queryPostgresDB(query, globalSmartGISConfig, values);
@@ -191,8 +188,6 @@ export const updateSemester = async (req: Request<{}, {}, semesterFields>, res: 
     query += ` WHERE semester_id = $${index}`;
     values.push(semester_id);
 
-    console.log(query);
-    console.log(values);
 
     try {
         await queryPostgresDB(query, globalSmartGISConfig, values);

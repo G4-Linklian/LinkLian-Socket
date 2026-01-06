@@ -88,9 +88,6 @@ export const createBuilding = async (req: Request<{}, {}, buildingFields>, res: 
     const query = `INSERT INTO building (inst_id, building_no, building_name, remark, flag_valid) 
                    VALUES ($1, $2, $3, $4, $5) RETURNING *;`;
     const values = [inst_id, building_no, building_name, remark, true];
-
-    console.log(query);
-    console.log(values);
     
     try {
         const result = await queryPostgresDB(query, globalSmartGISConfig, values);
@@ -160,9 +157,6 @@ export const updateBuilding = async (req: Request<{}, {}, buildingFields>, res: 
     values.push(building_id);
 
     const query = `UPDATE building SET ${updates.join(", ")} WHERE building_id = $${index} RETURNING *;`;
-
-    console.log(query);
-    console.log(values);
 
     try {
         const result = await queryPostgresDB(query, globalSmartGISConfig, values);
@@ -254,9 +248,6 @@ export const getRoomLocation = async (req: Request<{}, {}, buildingFields>, res:
         query += ` OFFSET $${index++} \n`;
         values.push(offset);
     }
-
-    console.log(query);
-    console.log(values);
 
     try {
         const result = await queryPostgresDB(query, globalSmartGISConfig, values);

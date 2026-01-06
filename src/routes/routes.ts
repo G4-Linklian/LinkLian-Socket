@@ -3,11 +3,20 @@ import multer from "multer";
 // import { getRole, createRole, updateRole } from "../logic/role"
 
 import { getInstitution, createInstitution, updateInstitution, loginInstitution } from "../logic/institution";
-import { getUserSys } from "../logic/user_sys";
+import { 
+    getUserSys,
+    createUserSys,
+    updateUserSys
+} from "../logic/user_sys";
+import { getRole, createRole, updateRole } from "../logic/role";
 
-import { getProgramHighschool, createProgramHighschool, updateProgramHighschool } from "../logic/programHighschool";
-import { getProgramUniversity, createProgramUniversity, updateProgramUniversity } from "../logic/programUniversity";
-import { getLearningArea, createLearningArea, updateLearningArea } from "../logic/learningArea";
+import { 
+    getLearningArea, 
+    createLearningArea, 
+    updateLearningArea, 
+    createLearningAreaUserSys,
+    updateLearningAreaUserSys,
+} from "../logic/learningArea";
 
 import { getSubject, createSubject, updateSubject } from "../logic/subject";
 import { getSemester, createSemester, updateSemester } from "../logic/semester";
@@ -44,7 +53,7 @@ import {
     getSchedule,
 
 } from "../logic/section";
-import { createProgram, getProgram, updateProgram } from "../logic/program";
+import { createProgram, getProgram, updateProgram, updateProgramUserSys } from "../logic/program";
 import {
     getEduLevelMaster,
     getEduLevel,
@@ -52,21 +61,19 @@ import {
     deleteEduLevelNorm
 } from "../logic/eduLevel";
 
-import { resetPassword, verifyAuthContext ,login,verifyOTP,resendOTP ,forgotPassword } from "../logic/auth";
+import { resetPassword, verifyAuthContext,resendOTP ,forgotPassword, login, verifyOTP } from "../logic/auth";
 import { authenticate } from "../middlewares/authen";
 import { AuthenticatedRequest } from "../interface/request.interface";
 import { createUser, getUser } from "../logic/user";
-import { login } from "../logic/auth";
-import { verifyOTP } from "../logic/auth";
 import  { uploadFiles, deleteFiles } from "../logic/fileStorage";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 // Role Routes
-// router.post("/role.get", getRole);
-// router.post("/role.create", createRole);
-// router.post("/role.update", updateRole);
+router.post("/role.get", getRole);
+router.post("/role.create", createRole);
+router.post("/role.update", updateRole);
 
 // Section Routes
 router.post("/section.master.get", getSectionMaster);
@@ -103,10 +110,13 @@ router.post("/institution.login", loginInstitution);
 router.post("/program.get", getProgram);
 router.post("/program.create", createProgram);
 router.post("/program.update", updateProgram);
+router.post("/program.usersys.update", updateProgramUserSys);
 
 // Learning Area Routes
 router.post("/learning.area.get", getLearningArea);
 router.post("/learning.area.create", createLearningArea);
+router.post("/learning.area.usersys.create", createLearningAreaUserSys);
+router.post("/learning.area.usersys.update", updateLearningAreaUserSys);
 router.post("/learning.area.update", updateLearningArea);
 
 // Subject Routes
@@ -143,7 +153,9 @@ router.post("/user.get", getUser);
 
 
 // UserSys Routes
-router.post("/user.sys.get", getUserSys);
+router.post("/usersys.get", getUserSys);
+router.post("/usersys.create", createUserSys);
+router.post("/usersys.update", updateUserSys);
 
 
 // Auth Routes
@@ -154,28 +166,6 @@ router.post("/auth.login", login);
 router.post("/auth.verify-otp", verifyOTP);
 router.post("/auth.resend-otp", resendOTP);
 
-
-// ใช้แค่ตรวจว่า token ใช้ได้หรือไม่
-//ลบได้ใช้เทสเฉยๆ
-router.post(
-  "/auth.test",
-  authenticate(), 
-  (req: AuthenticatedRequest, res) => {
-    res.status(200).json({
-      success: true,
-      message: "Token is valid",
-      user: req.user, // payload จาก JWT
-    });
-  }
-);
-
-router.post(
-  "/assignment.update",
-  authenticate("assignment_manage", "update"),
-  (req, res) => {
-    res.json({ success: true, message: "Update allowed" });
-  }
-);
 // File Storage Routes
 router.post("/uploadFile/:containerName/:folderName", upload.array('files', 10), uploadFiles);
 router.delete("/deleteFile/:containerName", deleteFiles);

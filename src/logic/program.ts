@@ -18,6 +18,7 @@ export const getProgram = async (req: Request<{}, {}, programFields>, res: Respo
         sort_order,
         limit,
         offset,
+        keyword
     } = req.body;
 
     if (
@@ -29,6 +30,7 @@ export const getProgram = async (req: Request<{}, {}, programFields>, res: Respo
         !tree_type &&
         !parent_ids &&
         !inst_type &&
+        !keyword &&
         !(typeof flag_valid === "boolean")) {
         res.status(400).json({ success: false, message: "No value input!" });
         return;
@@ -131,6 +133,15 @@ export const getProgram = async (req: Request<{}, {}, programFields>, res: Respo
         values.push(parent_ids);
     }
 
+    if (keyword) {
+        // ใช้ AND (...) ครอบเพื่อให้เงื่อนไข OR ทำงานถูกต้องในกลุ่มของมัน
+        // ใช้ ILIKE เพื่อให้ค้นหาแบบไม่สนตัวพิมพ์เล็ก/ใหญ่ (Case Insensitive)
+        // ใช้ % หน้าหลัง เพื่อหาคำที่มีส่วนประกอบนี้
+        query += ` AND (p.program_name ILIKE $${index})`;
+        values.push(`%${keyword}%`);
+        index++;
+    }
+
     // if (children_count) {
     //     query += ' GROUP BY p.program_id, i.inst_type \n'
     // } else {
@@ -153,9 +164,6 @@ export const getProgram = async (req: Request<{}, {}, programFields>, res: Respo
         query += ` OFFSET $${index++} \n`;
         values.push(offset);
     }
-
-    console.log(query);
-    console.log(values);
 
     try {
         const result = await queryPostgresDB(query, globalSmartGISConfig, values);
@@ -185,9 +193,6 @@ export const createProgram = async (req: Request<{}, {}, programFields>, res: Re
     const query = `INSERT INTO program (inst_id, program_name, program_type, parent_id, remark, tree_type, created_at, updated_at)
                    VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`;
     const values = [inst_id, program_name, program_type, parent_id, remark, tree_type];
-
-    console.log(query);
-    console.log(values);
 
     try {
         await queryPostgresDB(query, globalSmartGISConfig, values);
@@ -265,3 +270,67 @@ export const updateProgram = async (req: Request<{}, {}, programFields>, res: Re
         return;
     }
 };
+
+export const updateProgramUserSys = async (req: Request<{}, {}, programFields>, res: Response) => {
+    const {
+        program_id,
+        user_sys_id,
+        flag_valid
+    } = req.body;
+
+    if (!program_id && !user_sys_id) {
+        res.status(400).json({ success: false, message: "Missing program_id or user_sys_id!" });
+        return;
+    }
+
+    let query = `UPDATE user_sys_program_normalize SET `;
+    const values: any[] = [];
+    let index = 1;
+
+    if (program_id) {
+        query += ` program_id = $${index++},`;
+        values.push(program_id);
+    }
+
+    if (typeof flag_valid === "boolean") {
+        query += ` flag_valid = $${index++},`;
+        values.push(flag_valid);
+    }
+
+    // Remove trailing comma
+    query = query.slice(0, -1);
+    query += ` WHERE user_sys_id = $${index}`;
+    values.push(user_sys_id);
+
+    try {
+        await queryPostgresDB(query, globalSmartGISConfig, values);
+        res.status(200).json({ success: true, message: "ProgramUserSys updated successfully!" });
+        return;
+    }
+    catch (error) {
+        res.status(500).json({ success: false, message: "Error updating ProgramUserSys", error });
+        return;
+    }
+};
+
+
+export const createProgramUserSysFunc = async ({ user_sys_id, program_id }: any) => {
+
+    if (!user_sys_id || !program_id) {
+        return "Missing required fields!";
+    }
+
+    const query = `INSERT INTO user_sys_program_normalize (program_id, user_sys_id, flag_valid)
+                   VALUES ($1, $2, $3)`;
+    const values = [program_id, user_sys_id, true];
+
+
+    try {
+        const pgusData = await queryPostgresDB(query, globalSmartGISConfig, values);
+        return pgusData;
+    }
+    catch (error) {
+        return error;
+    }
+
+}

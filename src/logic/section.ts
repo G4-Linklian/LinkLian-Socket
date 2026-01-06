@@ -353,10 +353,8 @@ export const getSectionEducator = async (req: Request<{}, {}, sectionFields>, re
 
     let query = ``;
 
-    query += 'SELECT * FROM section s \n'
-    query += 'LEFT JOIN semester sem ON s.semester_id = sem.semester_id \n'
-    query += 'LEFT JOIN subject sub ON s.subject_id = sub.subject_id \n'
-    query += 'LEFT JOIN section_educator se ON s.section_id = se.section_id \n'
+    query += 'SELECT * FROM section_educator se \n'
+    query += 'LEFT JOIN section s ON s.section_id = se.section_id \n'
     query += 'LEFT JOIN user_sys us ON se.educator_id = us.user_sys_id \n'
     query += 'LEFT JOIN role r ON us.role_id = r.role_id \n'
     query += 'WHERE 1=1 \n'
@@ -427,6 +425,10 @@ export const getSectionEnrollment = async (req: Request<{}, {}, sectionFields>, 
         role_id,
         role_name,
         role_type,
+        offset,
+        limit,
+        sort_by,
+        sort_order
     } = req.body
 
     if (
@@ -444,12 +446,13 @@ export const getSectionEnrollment = async (req: Request<{}, {}, sectionFields>, 
 
     let query = ``;
 
-    query += 'SELECT * FROM section s \n'
-    query += 'LEFT JOIN semester sem ON s.semester_id = sem.semester_id \n'
-    query += 'LEFT JOIN subject sub ON s.subject_id = sub.subject_id \n'
-    query += 'LEFT JOIN enrollment en ON s.section_id = en.section_id \n'
+    query += 'SELECT *, COUNT(*) OVER() as total_count FROM enrollment en \n'
+    query += 'LEFT JOIN section s ON s.section_id = en.section_id AND en.section_id IS NOT NULL \n'
     query += 'LEFT JOIN user_sys us ON en.student_id = us.user_sys_id \n'
     query += 'LEFT JOIN role r ON us.role_id = r.role_id \n'
+    query += 'LEFT JOIN edu_level el ON us.edu_lev_id = el.edu_lev_id \n'
+    query += 'LEFT JOIN user_sys_program_normalize uspn ON us.user_sys_id = uspn.user_sys_id \n'
+    query += 'LEFT JOIN program p ON uspn.program_id = p.program_id \n'
     query += 'WHERE 1=1 \n'
 
     const values: any[] = [];
@@ -493,6 +496,20 @@ export const getSectionEnrollment = async (req: Request<{}, {}, sectionFields>, 
     if (typeof flag_valid === "boolean") {
         query += ` AND s.flag_valid = $${index++}`;
         values.push(flag_valid);
+    }
+
+    if (sort_by) {
+        const order = sort_order && (sort_order.toLowerCase() === 'desc') ? 'DESC' : 'ASC';
+        query += ` ORDER BY us.${sort_by} ${order} \n`;
+    }
+    if (limit) {
+        query += ` LIMIT $${index++} \n`;
+        values.push(limit);
+    }
+
+    if (offset) {
+        query += ` OFFSET $${index++} \n`;
+        values.push(offset);
     }
 
     try {
@@ -571,7 +588,6 @@ export const createSchedule = async (req: Request<{}, {}, sectionFields>, res: R
     }
 };
 
-
 export const createSectionSchedule = async (
     req: Request<{}, {}, sectionFields>,
     res: Response
@@ -588,8 +604,7 @@ export const createSectionSchedule = async (
 
     if (
         !subject_id ||
-        !semester_id ||
-        !section_name
+        !semester_id
     ) {
         res.status(400).json({ success: false, message: 'Missing required fields!' });
         return;
@@ -652,19 +667,17 @@ export const createSectionSchedule = async (
     }
 };
 
-
-
 export const createSectionEducator = async (req: Request<{}, {}, sectionFields>, res: Response) => {
-    const { subject_id, user_sys_id, position, flag_valid } = req.body;
+    const { section_id, user_sys_id, position, flag_valid } = req.body;
 
-    if (!subject_id || !user_sys_id || !position || typeof flag_valid !== 'boolean') {
+    if (!section_id || !user_sys_id || !position) {
         res.status(400).json({ success: false, message: 'Missing required fields!' });
         return;
     }
 
-    const query = `INSERT INTO section_educator (subject_id, educator_id, position, flag_valid) 
+    const query = `INSERT INTO section_educator (section_id, educator_id, position, flag_valid) 
                    VALUES ($1, $2, $3, $4) RETURNING *;`;
-    const values = [subject_id, user_sys_id, position, flag_valid];
+    const values = [section_id, user_sys_id, position, true];
 
     try {
         const result = await queryPostgresDB(query, globalSmartGISConfig, values);
@@ -677,16 +690,16 @@ export const createSectionEducator = async (req: Request<{}, {}, sectionFields>,
 };
 
 export const createSectionEnrollment = async (req: Request<{}, {}, sectionFields>, res: Response) => {
-    const { subject_id, user_sys_id, flag_valid } = req.body;
+    const { section_id, user_sys_id, flag_valid } = req.body;
 
-    if (!subject_id || !user_sys_id || typeof flag_valid !== 'boolean') {
+    if (!section_id || !user_sys_id) {
         res.status(400).json({ success: false, message: 'Missing required fields!' });
         return;
     }
 
-    const query = `INSERT INTO enrollment (subject_id, student_id, flag_valid, enrolled_at) 
+    const query = `INSERT INTO enrollment (section_id, student_id, flag_valid, enrolled_at) 
                    VALUES ($1, $2, $3, NOW()) RETURNING *;`;
-    const values = [subject_id, user_sys_id, flag_valid];
+    const values = [section_id, user_sys_id, true];
 
     try {
         const result = await queryPostgresDB(query, globalSmartGISConfig, values);

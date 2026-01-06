@@ -26,7 +26,6 @@ export const getRole = async (req: Request<{}, {}, roleFields>, res: Response) =
         res.status(400).json({ success: false, message: "No value input!" });
     }
 
-    // console.log(req.body)
 
     let query = ``;
 
@@ -64,9 +63,6 @@ export const getRole = async (req: Request<{}, {}, roleFields>, res: Response) =
         query += ` AND r.flag_valid = $${index++}`;
         values.push(flag_valid);
     }
-
-    console.log(query)
-    console.log(values);
 
     try {
         const data = await queryPostgresDB(query, globalSmartGISConfig, values);
@@ -115,9 +111,6 @@ export const createRole = async (req: Request<{}, {}, roleFields>, res: Response
     JSON.stringify(access),
     flag_valid ?? true
   ];
-
-  console.log(query);
-  console.log(values);
 
   try {
     const data = await queryPostgresDB(query, globalSmartGISConfig, values);
@@ -189,9 +182,6 @@ export const updateRole = async (req: Request<{}, {}, roleFields>, res: Response
   values.push(role_id);
 
   query += ` RETURNING *;`;
-
-  console.log(query);
-  console.log(values);
 
   try {
     const data = await queryPostgresDB(query, globalSmartGISConfig, values);

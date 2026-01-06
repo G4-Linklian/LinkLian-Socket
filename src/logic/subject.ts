@@ -159,8 +159,6 @@ export const createSubject = async (req: Request<{}, {}, subjectFields>, res: Re
                    VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`;
     const values = [learning_area_id, subject_code, name_th, name_en, credit, hour_per_week];
 
-    console.log(query);
-    console.log(values);
 
     try {
         await queryPostgresDB(query, globalSmartGISConfig, values);
@@ -229,9 +227,6 @@ export const updateSubject = async (req: Request<{}, {}, subjectFields>, res: Re
     query = query.slice(0, -1);
     query += ` WHERE subject_id = $${index}`;
     values.push(subject_id);
-
-    console.log(query);
-    console.log(values);
 
     try {
         await queryPostgresDB(query, globalSmartGISConfig, values);

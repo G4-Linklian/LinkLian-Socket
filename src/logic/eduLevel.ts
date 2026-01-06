@@ -173,9 +173,6 @@ export const createEduLevel = async (req: Request<{}, {}, eduLevelFields>, res: 
                    VALUES ($1, $2, NOW(), NOW())`;
     const values = [level_name, edu_type];
 
-    console.log(query);
-    console.log(values);
-
     try {
         await queryPostgresDB(query, globalSmartGISConfig, values);
         res.status(201).json({ success: true, message: "EduLevel created successfully!" });
@@ -223,9 +220,6 @@ export const updateEduLevel = async (req: Request<{}, {}, eduLevelFields>, res: 
     query += ` WHERE edu_lev_id = $${index}`;
     values.push(edu_lev_id);
 
-    console.log(query);
-    console.log(values);
-
     try {
         await queryPostgresDB(query, globalSmartGISConfig, values);
         res.status(200).json({ success: true, message: "EduLevel updated successfully!" });
@@ -253,9 +247,6 @@ export const createEduLevelNorm = async (req: Request<{}, {}, eduLevelFields>, r
                    VALUES ($1, $2, true)`;
     const values = [edu_lev_id, program_id];
 
-    console.log(query);
-    console.log(values);
-
     try {
         await queryPostgresDB(query, globalSmartGISConfig, values);
         res.status(201).json({ success: true, message: "EduLevel created successfully!" });
@@ -282,9 +273,6 @@ export const updateEduLevelNorm = async (req: Request<{}, {}, eduLevelFields>, r
     const query = `UPDATE edu_level_program_normalize SET flag_valid = true WHERE edu_lev_id = $1 AND program_id = $2`;
     const values = [edu_lev_id, program_id];
 
-    console.log(query);
-    console.log(values);
-
     try {
         await queryPostgresDB(query, globalSmartGISConfig, values);
         res.status(201).json({ success: true, message: "EduLevel created successfully!" });
@@ -310,9 +298,6 @@ export const deleteEduLevelNorm = async (req: Request<{}, {}, eduLevelFields>, r
 
     const query = `DELETE FROM edu_level_program_normalize WHERE edu_lev_id = $1 AND program_id = $2`;
     const values = [edu_lev_id, program_id];
-
-    console.log(query);
-    console.log(values);
 
     try {
         await queryPostgresDB(query, globalSmartGISConfig, values);
