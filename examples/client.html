@@ -1,169 +1,381 @@
 <!DOCTYPE html>
-<html lang="th">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Test Socket Chat & Noti</title>
+    <title>LinkLian WebSocket Test Client - Go Version</title>
     <style>
-        body { font-family: sans-serif; max-width: 800px; margin: 20px auto; padding: 0 20px; }
-        .container { border: 1px solid #ccc; padding: 20px; border-radius: 8px; }
-        .status { font-weight: bold; margin-bottom: 10px; }
-        .status.online { color: green; }
-        .status.offline { color: red; }
-        
-        /* กล่อง Chat */
-        #chat-box { 
-            height: 300px; 
-            border: 1px solid #ddd; 
-            overflow-y: scroll; 
-            padding: 10px; 
-            margin-bottom: 10px; 
-            background: #f9f9f9; 
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
         }
-        .message { margin-bottom: 5px; padding: 5px; border-radius: 4px; }
-        .message.me { background-color: #d1e7dd; text-align: right; } /* ข้อความเรา */
-        .message.other { background-color: #fff; border: 1px solid #eee; } /* ข้อความคนอื่น */
-        .noti { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; } /* แจ้งเตือน */
-
-        .input-group { margin-bottom: 15px; }
-        label { display: inline-block; width: 100px; }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        textarea {
+            height: 60px;
+            resize: vertical;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .message-log {
+            height: 400px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .message.sent {
+            background-color: #e3f2fd;
+            border-left: 3px solid #2196f3;
+        }
+        .message.received {
+            background-color: #f3e5f5;
+            border-left: 3px solid #9c27b0;
+        }
+        .message.system {
+            background-color: #fff3e0;
+            border-left: 3px solid #ff9800;
+        }
+        .two-column {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .timestamp {
+            font-size: 10px;
+            color: #666;
+            margin-left: 10px;
+        }
+        .clear-btn {
+            background-color: #6c757d;
+        }
+        .clear-btn:hover {
+            background-color: #545b62;
+        }
     </style>
 </head>
-<body>
-
-    <h2>🛠️ WebSocket Tester (Chat + Noti)</h2>
-
+    <h1>🚀 LinkLian WebSocket Test Client (Go Version)</h1>
+    
     <div class="container">
-        <div class="input-group">
-            <label>UserID:</label>
-            <input type="text" id="userId" value="user_001" placeholder="ระบุ ID ผู้ใช้">
+        <div id="status" class="status disconnected">Disconnected</div>
+        
+        <div class="form-group">
+            <label for="serverUrl">Server URL:</label>
+            <input type="text" id="serverUrl" value="ws://localhost:7070/ws">
         </div>
-        <div class="input-group">
-            <label>Room ID:</label>
-            <input type="text" id="roomId" value="room_A" placeholder="ระบุห้องแชท">
+        
+        <button id="connectBtn" onclick="connect()">Connect</button>
+        <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+        <button class="clear-btn" onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <div class="two-column">
+        <div class="container">
+            <h3>🎮 Controls</h3>
+            
+            <div class="form-group">
+                <label for="userID">Your User ID:</label>
+                <input type="text" id="userID" value="user123" placeholder="Enter your user ID">
+            </div>
+
+            <div class="form-group">
+                <label for="conversationID">Room ID:</label>
+                <input type="text" id="conversationID" value="ROOM_001" placeholder="Enter room ID">
+            </div>
+
+            <button onclick="joinRoom()">🏠 Join Room</button>
+            <button onclick="registerNoti()">🔔 Register for Notifications</button>
+
+            <hr>
+
+            <div class="form-group">
+                <label for="messageText">Message:</label>
+                <textarea id="messageText" placeholder="Type your message here..."></textarea>
+            </div>
+            <button onclick="sendMessage()">💬 Send Chat Message</button>
+
+            <hr>
+
+            <div class="form-group">
+                <label for="notificationID">Notification ID:</label>
+                <input type="text" id="notificationID" value="noti789" placeholder="Enter notification ID">
+            </div>
+            <button onclick="readNotification()">📖 Mark as Read</button>
+
+            <hr>
+
+            <div class="form-group">
+                <label for="targetUserID">Target User ID (for testing):</label>
+                <input type="text" id="targetUserID" value="user456" placeholder="Enter target user ID">
+            </div>
+            <div class="form-group">
+                <label for="testNotificationText">Test Notification:</label>
+                <textarea id="testNotificationText" placeholder="Test notification content..."></textarea>
+            </div>
+            <button onclick="sendTestNotification()">🧪 Send Test Notification</button>
         </div>
-        <button onclick="connectSocket()">🔌 Connect & Join Room</button>
-        <div id="status" class="status offline">Status: Disconnected</div>
 
-        <hr>
-
-        <h3>Chat Room</h3>
-        <div id="chat-box"></div>
-
-        <div class="input-group">
-            <input type="text" id="msgInput" placeholder="พิมพ์ข้อความ..." style="width: 70%;">
-            <button onclick="sendMessage()" disabled id="sendBtn">Send</button>
+        <div class="container">
+            <h3>📝 Message Log</h3>
+            <div id="messageLog" class="message-log"></div>
         </div>
     </div>
 
     <script>
-        let ws;
-        let currentUserId = "";
-        let currentRoomId = "";
+        let ws = null;
+        let isConnected = false;
 
-        const statusDiv = document.getElementById('status');
-        const chatBox = document.getElementById('chat-box');
-        const sendBtn = document.getElementById('sendBtn');
+        function updateStatus(connected) {
+            const statusEl = document.getElementById('status');
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            
+            isConnected = connected;
+            
+            if (connected) {
+                statusEl.textContent = 'Connected ✅';
+                statusEl.className = 'status connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            } else {
+                statusEl.textContent = 'Disconnected ❌';
+                statusEl.className = 'status disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            }
+        }
 
-        // 1. ฟังก์ชันเชื่อมต่อ Socket
-        function connectSocket() {
+        function addMessage(text, type = 'system') {
+            const log = document.getElementById('messageLog');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${type}`;
+            messageEl.innerHTML = `${text}<span class="timestamp">${timestamp}</span>`;
+            
+            log.appendChild(messageEl);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function connect() {
+            const url = document.getElementById('serverUrl').value;
+            
+            try {
+                ws = new WebSocket(url);
+                
+                ws.onopen = function(event) {
+                    updateStatus(true);
+                    addMessage('🔗 Connected to Go WebSocket server', 'system');
+                };
+                
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        //addMessage(`📥 Received: ${JSON.stringify(data, null, 2)}`, 'received');
+                        
+                        // Handle specific message types
+                        if (data.type === 'CHAT_RECEIVE') {
+                            addMessage(`💬 Chat from ${data.data.senderId}: "${data.data.message}"`, 'received');
+                        } else if (data.type === 'NOTIFICATION') {
+                            addMessage(`🔔 Notification: ${JSON.stringify(data.data)}`, 'received');
+                        }
+                    } catch (e) {
+                        addMessage(`📥 Raw message: ${event.data}`, 'received');
+                    }
+                };
+                
+                ws.onclose = function(event) {
+                    updateStatus(false);
+                    addMessage(`🔌 Connection closed (Code: ${event.code})`, 'system');
+                };
+                
+                ws.onerror = function(error) {
+                    addMessage('❌ Connection error', 'system');
+                    console.error('WebSocket error:', error);
+                };
+                
+            } catch (error) {
+                addMessage('❌ Failed to connect: ' + error.message, 'system');
+                console.error('Connection error:', error);
+            }
+        }
+
+        function disconnect() {
             if (ws) {
-                ws.close(); // ปิดอันเก่าก่อนถ้ามี
+                ws.close();
             }
+        }
 
-            currentUserId = document.getElementById('userId').value;
-            currentRoomId = document.getElementById('roomId').value;
+        function sendWSMessage(message) {
+            if (!isConnected || !ws) {
+                addMessage('❌ Not connected', 'system');
+                return false;
+            }
+            
+            try {
+                ws.send(JSON.stringify(message));
+                addMessage(`📤 Sent: ${JSON.stringify(message, null, 2)}`, 'sent');
+                return true;
+            } catch (error) {
+                addMessage('❌ Failed to send message: ' + error.message, 'system');
+                return false;
+            }
+        }
 
-            // เปลี่ยน URL ตาม Server ของคุณ (เช่น ws://localhost:8080)
-            ws = new WebSocket('ws://localhost:7070');
-
-            ws.onopen = () => {
-                statusDiv.innerText = 'Status: Connected ✅';
-                statusDiv.className = 'status online';
-                sendBtn.disabled = false;
-
-                console.log("Connected to Server");
-
-                // ส่งคำสั่ง Join Room ทันทีที่ต่อติด
-                const joinPayload = {
-                    type: 'JOIN_ROOM',
-                    payload: {
-                        userID: currentUserId,
-                        conversationID: currentRoomId
-                    }
-                };
-                ws.send(JSON.stringify(joinPayload));
-                
-                // (Optional) ส่ง REGISTER_NOTI ด้วยก็ได้
-                ws.send(JSON.stringify({
-                    type: 'REGISTER_NOTI',
-                    payload: { userID: currentUserId }
-                }));
-
-                appendLog(`🔵 System: Joined room "${currentRoomId}" as "${currentUserId}"`);
-            };
-
-            ws.onmessage = (event) => {
-                const response = JSON.parse(event.data);
-                console.log("Receive:", response);
-
-                // 2. แยกประเภทข้อความที่ได้รับ
-                if (response.type === 'CHAT_RECEIVE') {
-                    // แสดงข้อความแชท
-                    const msgData = response.data;
-                    const isMe = msgData.send_by === currentUserId;
-                    appendLog(`${msgData.send_by}: ${msgData.message_text}`, isMe ? 'me' : 'other');
-                
-                } else if (response.type === 'NOTIFICATION') {
-                    // แสดงแจ้งเตือน
-                    const notiData = response.data;
-                    appendLog(`🔔 NOTIFICATION: ${notiData.title} - ${notiData.message}`, 'noti');
-                    alert(`แจ้งเตือนใหม่!\n${notiData.title}`);
+        function joinRoom() {
+            const userID = document.getElementById('userID').value;
+            const roomId = document.getElementById('conversationID').value;
+            
+            if (!userID || !roomId) {
+                alert('Please enter both User ID and Room ID');
+                return;
+            }
+            
+            sendWSMessage({
+                type: 'JOIN_ROOM',
+                payload: {
+                    userID: userID,
+                    roomId: roomId
                 }
-            };
-
-            ws.onclose = () => {
-                statusDiv.innerText = 'Status: Disconnected ❌';
-                statusDiv.className = 'status offline';
-                sendBtn.disabled = true;
-                appendLog(`🔴 System: Disconnected`);
-            };
+            });
         }
 
-        // 3. ฟังก์ชันส่งข้อความ
-        function sendMessage() {
-            const input = document.getElementById('msgInput');
-            const text = input.value;
+        function registerNoti() {
+            const senderId = document.getElementById('userID').value;
+            
+            if (!senderId) {
+                alert('Please enter User ID');
+                return;
+            }
+            
+            sendWSMessage({
+                type: 'REGISTER_NOTI',
+                payload: {
+                    senderId: senderId
+                }
+            });
+        }
 
-            if (text && ws && ws.readyState === WebSocket.OPEN) {
-                const msgPayload = {
-                    type: 'CHAT_SEND',
-                    payload: {
-                        userID: currentUserId,
-                        conversationID: currentRoomId,
-                        message_text: text
-                    }
-                };
-                
-                ws.send(JSON.stringify(msgPayload));
-                input.value = ''; // เคลียร์ช่อง
+        function sendMessage() {
+            const message = document.getElementById('messageText').value;
+            const roomId = document.getElementById('conversationID').value;
+            const senderId = document.getElementById('userID').value;
+            
+            if (!message || !roomId || !senderId) {
+                alert('Please enter message text, room ID, and user ID');
+                return;
+            }
+            
+            if (sendWSMessage({
+                type: 'CHAT_SEND',
+                payload: {
+                    senderId: senderId,
+                    roomId: roomId,
+                    message: message
+                }
+            })) {
+                document.getElementById('messageText').value = '';
             }
         }
 
-        // Helper: ฟังก์ชันช่วยแสดงผลลงในกล่อง
-        function appendLog(text, type = 'other') {
-            const div = document.createElement('div');
-            div.className = `message ${type}`;
-            div.innerText = text;
-            chatBox.appendChild(div);
-            chatBox.scrollTop = chatBox.scrollHeight; // เลื่อนลงล่างสุดเสมอ
+        function readNotification() {
+            const notificationID = document.getElementById('notificationID').value;
+            
+            sendWSMessage({
+                type: 'READ_NOTI',
+                payload: {
+                    notificationID: notificationID
+                }
+            });
         }
 
-        // กด Enter เพื่อส่งได้
-        document.getElementById('msgInput').addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') sendMessage();
-        });
+        function sendTestNotification() {
+            // This would normally be handled by a backend API
+            // For testing purposes, we can simulate receiving a notification
+            const targetUserID = document.getElementById('targetUserID').value;
+            const notificationText = document.getElementById('testNotificationText').value;
+            
+            addMessage(`🧪 Test: Simulating notification to ${targetUserID}: "${notificationText}"`, 'system');
+            
+            // Simulate receiving a notification (for demo purposes)
+            setTimeout(() => {
+                addMessage(`📥 Received: {"type":"NOTIFICATION","data":{"title":"Test Notification","content":"${notificationText}","timestamp":${Date.now()}}}`, 'received');
+            }, 1000);
+        }
 
+        function clearLog() {
+            document.getElementById('messageLog').innerHTML = '';
+        }
+
+        // Add enter key support for message input
+        document.getElementById('messageText').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
     </script>
 </body>
 </html>
