@@ -31,24 +31,24 @@ RUN adduser -D -s /bin/sh appuser
 # Set working directory
 WORKDIR /app
 
-# Copy binary from builder stage
-COPY --from=builder /app/main .
+# Copy binary from builder stage to a location not overwritten by volumes
+COPY --from=builder /app/main /usr/local/bin/linklian-socket
 
 # Copy .env file if it exists (optional)
 COPY --from=builder /app/.env* ./
 
-# Change ownership to appuser
-RUN chown -R appuser:appuser /app
+# Change ownership to appuser and ensure binary is executable
+RUN chown -R appuser:appuser /app && chmod +x /usr/local/bin/linklian-socket
 
 # Switch to non-root user
 USER appuser
 
 # Expose port
-EXPOSE 7070
+EXPOSE 4800
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:7070/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:4800/health || exit 1
 
 # Run the binary
-CMD ["./main"]
+CMD ["linklian-socket"]

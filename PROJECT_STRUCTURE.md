@@ -143,7 +143,7 @@ air
 
 สร้างไฟล์ `.env`:
 ```env
-PORT=7070
+PORT=4800
 RABBITMQ_URL=amqp://guest:guest@localhost:5672/
 GO_ENV=development
 LOG_LEVEL=info
@@ -162,8 +162,8 @@ docker run -d --name linklian-rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-ma
 
 ## 📊 Monitoring:
 
-- **Health Check**: `GET http://localhost:7070/health`
+- **Health Check**: `GET http://localhost:4800/health`
 - **RabbitMQ Management**: `http://localhost:15672` (guest:guest)
-- **WebSocket Endpoint**: `ws://localhost:7070/ws`
+- **WebSocket Endpoint**: `ws://localhost:4800/ws`
 
 ตอนนี้โปรเจคมีโครงสร้างที่เป็นระเบียบและง่ายต่อการพัฒนาต่อยอดแล้วครับ! 🎉

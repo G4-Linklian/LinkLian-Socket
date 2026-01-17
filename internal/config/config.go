@@ -25,7 +25,7 @@ func Load() *Config {
 	}
 
 	return &Config{
-		Port:             getEnv("PORT", "7070"),
+		Port:             getEnv("PORT", "4800"),
 		RabbitMQURL:      getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
 		Environment:      getEnv("GO_ENV", "development"),
 		LogLevel:         getEnv("LOG_LEVEL", "info"),

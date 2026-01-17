@@ -9,8 +9,10 @@ import (
 	"linklian-api/internal/handlers"
 	"linklian-api/internal/models"
 	"linklian-api/internal/rabbitmq"
+	"linklian-api/internal/repository"
 	wsmanager "linklian-api/internal/websocket"
 	"linklian-api/pkg/utils"
+	"github.com/gorilla/websocket"
 )
 
 // Server represents the main server instance
@@ -43,8 +45,11 @@ func NewServer() (*Server, error) {
 		}
 	}
 
+	// Initialize repositories
+	messageRepo := repository.NewStubMessageRepository()
+
 	// Initialize handlers
-	wsHandler := handlers.NewWebSocketHandler(wsManager, rabbitManager)
+	wsHandler := handlers.NewWebSocketHandler(wsManager, rabbitManager, messageRepo)
 	httpHandler := handlers.NewHTTPHandler(wsManager)
 
 	return &Server{
@@ -73,6 +78,7 @@ func (s *Server) Start() error {
 func (s *Server) setupRoutes() {
 	http.HandleFunc("/ws", s.handleWebSocketConnection)
 	http.HandleFunc("/health", s.httpHandler.HandleHealth)
+	http.HandleFunc("/ws/internal", s.handleInternalConnection)
 }
 
 // setupGracefulShutdown sets up graceful shutdown
@@ -133,6 +139,45 @@ func (s *Server) handleWebSocketConnection(w http.ResponseWriter, r *http.Reques
 			}
 		default:
 			utils.LogWarning("Unknown message type: " + msg.Type)
+		}
+	}
+}
+
+func (s *Server) handleInternalConnection(w http.ResponseWriter, r *http.Request) {
+	conn, err := s.wsManager.UpgradeConnection(w, r)
+
+	if err != nil {
+		utils.LogError("WebSocket upgrade error", err)
+		return
+	}
+	defer conn.Close()
+
+	for {
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(
+				err,
+				websocket.CloseGoingAway,
+				websocket.CloseAbnormalClosure,
+			) {
+				utils.LogError("Internal WebSocket unexpected close", err)
+			} else {
+				utils.LogInfo("Internal WebSocket closed normally")
+			}
+			break
+		}
+
+		var event models.Message
+		if err := json.Unmarshal(msg, &event); err != nil {
+			utils.LogError("Internal JSON parse error", err)
+			continue
+		}
+
+		switch event.Type {
+		case "CHAT_DELIVER":
+			s.wsHandler.HandleChatDeliver(event.Payload)
+		default:
+			utils.LogWarning("Unknown internal message type: " + event.Type)
 		}
 	}
 }

@@ -40,7 +40,7 @@ Or install RabbitMQ directly on your system.
 
 Create a `.env` file in the root directory:
 ```env
-PORT=7070
+PORT=4800
 RABBITMQ_URL=amqp://guest:guest@localhost:5672/
 ```
 
@@ -58,7 +58,7 @@ go build -o linklian-server ./cmd/
 ### WebSocket API
 
 #### Connection
-Connect to: `ws://localhost:7070/ws`
+Connect to: `ws://localhost:4800/ws`
 
 #### Message Format
 All messages should be in JSON format:
@@ -160,7 +160,7 @@ All events are published to the `linklian_events` exchange with the following ro
 
 ### Health Check
 
-Health endpoint: `GET http://localhost:7070/health`
+Health endpoint: `GET http://localhost:4800/health`
 
 Response:
 ```json

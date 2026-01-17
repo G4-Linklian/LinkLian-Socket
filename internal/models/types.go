@@ -10,7 +10,7 @@ import (
 type ClientInfo struct {
 	Socket   *websocket.Conn
 	UserID   string
-	RoomId   *string
+	ChatId   *string
 	IsOnline bool
 	Mutex    sync.Mutex
 }
@@ -23,29 +23,44 @@ type Message struct {
 
 // ChatMessage represents chat message data
 type ChatMessage struct {
-	MessageID string `json:"message_id"`
-	RoomId    string `json:"roomId"`
-	SenderId  string `json:"senderId"`
-	Message   string `json:"message"`
-	SendAt    string `json:"send_at"`
+	MessageId string  `json:"message_id"`
+	ChatId    string  `json:"chat_id"`
+	SenderId  string  `json:"sender_id"`
+	Content   string  `json:"content"`
+	SendAt    string  `json:"send_at"`
+	ReplyId   *string `json:"reply_id,omitempty"`
+	FileUrl   *string `json:"file,omitempty"`
 }
 
 // JoinRoomPayload represents join room message payload
 type JoinRoomPayload struct {
-	UserID string `json:"userID"`
-	RoomId string `json:"roomId"`
+	UserID string `json:"user_id"`
+	ChatId string `json:"chat_id"`
 }
 
 // RegisterNotiPayload represents register notification payload
 type RegisterNotiPayload struct {
-	SenderId string `json:"senderId"`
+	SenderId string `json:"sender_id"`
 }
 
 // ChatSendPayload represents chat send payload
 type ChatSendPayload struct {
-	RoomId   string `json:"roomId"`
-	SenderId string `json:"senderId"`
-	Message  string `json:"message"`
+	ChatId   string  `json:"chat_id"`
+	SenderId string  `json:"sender_id"`
+	Content  string  `json:"content"`
+	ReplyId  *string `json:"reply_id,omitempty"`
+	FileUrl  *string `json:"file,omitempty"`
+}
+
+// ChatDeliverPayload represents chat deliver payload
+type ChatDeliverPayload struct {
+	MessageId string  `json:"message_id" mapstructure:"message_id"`
+	ChatId    string  `json:"chat_id" mapstructure:"chat_id"`
+	SenderId  string  `json:"sender_id" mapstructure:"sender_id"`
+	Content   string  `json:"content" mapstructure:"content"`
+	SendAt    string  `json:"send_at" mapstructure:"send_at"`
+	ReplyId   *string `json:"reply_id,omitempty" mapstructure:"reply_id"`
+	FileUrl   *string `json:"file,omitempty" mapstructure:"file"`
 }
 
 // Event represents RabbitMQ message structure
@@ -63,9 +78,8 @@ type HealthResponse struct {
 	Clients   int    `json:"clients"`
 }
 
-
 // SocketEvent represents the structure of events sent over WebSocket
 type SocketEvent struct {
-    Type    string                 `json:"type"`
-    Payload map[string]interface{} `json:"payload"`
+	Type    string                 `json:"type"`
+	Payload map[string]interface{} `json:"payload"`
 }

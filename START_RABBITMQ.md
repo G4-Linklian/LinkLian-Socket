@@ -53,9 +53,9 @@ echo RABBITMQ_OPTIONAL=true > .env
 - **RabbitMQ Management UI**: http://localhost:15672
   - Username: `linklian`
   - Password: `linklian123`
-- **API Server**: http://localhost:7070
-- **WebSocket**: ws://localhost:7070/ws
-- **Health Check**: http://localhost:7070/health
+- **API Server**: http://localhost:4800
+- **WebSocket**: ws://localhost:4800/ws
+- **Health Check**: http://localhost:4800/health
 
 ## การทดสอบ
 

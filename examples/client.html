@@ -123,7 +123,7 @@
         
         <div class="form-group">
             <label for="serverUrl">Server URL:</label>
-            <input type="text" id="serverUrl" value="ws://localhost:7070/ws">
+            <input type="text" id="serverUrl" value="ws://socket-wachawich.linklian.org/ws">
         </div>
         
         <button id="connectBtn" onclick="connect()">Connect</button>
@@ -141,11 +141,11 @@
             </div>
 
             <div class="form-group">
-                <label for="conversationID">Room ID:</label>
-                <input type="text" id="conversationID" value="ROOM_001" placeholder="Enter room ID">
+                <label for="conversationID">Chat ID:</label>
+                <input type="text" id="conversationID" value="CHAT_001" placeholder="Enter chat ID">
             </div>
 
-            <button onclick="joinRoom()">🏠 Join Room</button>
+            <button onclick="joinRoom()">🏠 Join Chat</button>
             <button onclick="registerNoti()">🔔 Register for Notifications</button>
 
             <hr>
@@ -163,18 +163,6 @@
                 <input type="text" id="notificationID" value="noti789" placeholder="Enter notification ID">
             </div>
             <button onclick="readNotification()">📖 Mark as Read</button>
-
-            <hr>
-
-            <div class="form-group">
-                <label for="targetUserID">Target User ID (for testing):</label>
-                <input type="text" id="targetUserID" value="user456" placeholder="Enter target user ID">
-            </div>
-            <div class="form-group">
-                <label for="testNotificationText">Test Notification:</label>
-                <textarea id="testNotificationText" placeholder="Test notification content..."></textarea>
-            </div>
-            <button onclick="sendTestNotification()">🧪 Send Test Notification</button>
         </div>
 
         <div class="container">
@@ -237,9 +225,9 @@
                         
                         // Handle specific message types
                         if (data.type === 'CHAT_RECEIVE') {
-                            addMessage(`💬 Chat from ${data.data.senderId}: "${data.data.message}"`, 'received');
+                            addMessage(`💬 Chat from ${data.payload.sender_id}: "${data.payload.content}"`, 'received');
                         } else if (data.type === 'NOTIFICATION') {
-                            addMessage(`🔔 Notification: ${JSON.stringify(data.data)}`, 'received');
+                            addMessage(`🔔 Notification: ${JSON.stringify(data.payload)}`, 'received');
                         }
                     } catch (e) {
                         addMessage(`📥 Raw message: ${event.data}`, 'received');
@@ -286,18 +274,18 @@
 
         function joinRoom() {
             const userID = document.getElementById('userID').value;
-            const roomId = document.getElementById('conversationID').value;
+            const chatId = document.getElementById('conversationID').value;
             
-            if (!userID || !roomId) {
-                alert('Please enter both User ID and Room ID');
+            if (!userID || !chatId) {
+                alert('Please enter both User ID and Chat ID');
                 return;
             }
             
             sendWSMessage({
                 type: 'JOIN_ROOM',
                 payload: {
-                    userID: userID,
-                    roomId: roomId
+                    user_id: userID,
+                    chat_id: chatId
                 }
             });
         }
@@ -313,27 +301,27 @@
             sendWSMessage({
                 type: 'REGISTER_NOTI',
                 payload: {
-                    senderId: senderId
+                    sender_id: senderId
                 }
             });
         }
 
         function sendMessage() {
-            const message = document.getElementById('messageText').value;
-            const roomId = document.getElementById('conversationID').value;
+            const content = document.getElementById('messageText').value;
+            const chatId = document.getElementById('conversationID').value;
             const senderId = document.getElementById('userID').value;
             
-            if (!message || !roomId || !senderId) {
-                alert('Please enter message text, room ID, and user ID');
+            if (!content || !chatId || !senderId) {
+                alert('Please enter message text, chat ID, and user ID');
                 return;
             }
             
             if (sendWSMessage({
                 type: 'CHAT_SEND',
                 payload: {
-                    senderId: senderId,
-                    roomId: roomId,
-                    message: message
+                    sender_id: senderId,
+                    chat_id: chatId,
+                    content: content
                 }
             })) {
                 document.getElementById('messageText').value = '';
@@ -349,20 +337,6 @@
                     notificationID: notificationID
                 }
             });
-        }
-
-        function sendTestNotification() {
-            // This would normally be handled by a backend API
-            // For testing purposes, we can simulate receiving a notification
-            const targetUserID = document.getElementById('targetUserID').value;
-            const notificationText = document.getElementById('testNotificationText').value;
-            
-            addMessage(`🧪 Test: Simulating notification to ${targetUserID}: "${notificationText}"`, 'system');
-            
-            // Simulate receiving a notification (for demo purposes)
-            setTimeout(() => {
-                addMessage(`📥 Received: {"type":"NOTIFICATION","data":{"title":"Test Notification","content":"${notificationText}","timestamp":${Date.now()}}}`, 'received');
-            }, 1000);
         }
 
         function clearLog() {

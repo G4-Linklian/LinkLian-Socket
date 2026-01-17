@@ -61,9 +61,9 @@ func (m *Manager) GetClientsCount() int {
 }
 
 // BroadcastToRoom broadcasts a message to all clients in a room
-func (m *Manager) BroadcastToRoom(roomId string, messageType string, data interface{}) {
+func (m *Manager) BroadcastToRoom(chatId string, senderId string, messageType string, data interface{}) {
 	response := map[string]interface{}{
-		"type": messageType,
+		"type":    messageType,
 		"payload": data,
 	}
 
@@ -77,14 +77,19 @@ func (m *Manager) BroadcastToRoom(roomId string, messageType string, data interf
 	defer m.clientsMutex.RUnlock()
 
 	for _, client := range m.clients {
-		if client.RoomId != nil && *client.RoomId == roomId && client.IsOnline {
+
+		// if want to sender recieve message, remove this check
+		if client.UserID == senderId {
+			continue
+		}
+
+		if client.ChatId != nil && *client.ChatId == chatId && client.IsOnline {
 			client.Mutex.Lock()
 			err := client.Socket.WriteMessage(websocket.TextMessage, responseBytes)
 			client.Mutex.Unlock()
 
 			if err != nil {
 				log.Printf("❌ Failed to send message to client %s: %v", client.UserID, err)
-				// Remove client on write error
 				go m.RemoveClient(client.UserID)
 			}
 		}
@@ -100,7 +105,7 @@ func (m *Manager) SendNotificationToUser(targetUserID string, notiData interface
 	}
 
 	response := map[string]interface{}{
-		"type": "NOTIFICATION",
+		"type":    "NOTIFICATION",
 		"payload": notiData,
 	}
 
