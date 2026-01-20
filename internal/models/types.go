@@ -30,6 +30,7 @@ type ChatMessage struct {
 	SendAt    string  `json:"send_at"`
 	ReplyId   *string `json:"reply_id,omitempty"`
 	FileUrl   *string `json:"file,omitempty"`
+	CreatedAt int64   `json:"created_at"`
 }
 
 // JoinRoomPayload represents join room message payload
@@ -50,6 +51,7 @@ type ChatSendPayload struct {
 	Content  string  `json:"content"`
 	ReplyId  *string `json:"reply_id,omitempty"`
 	FileUrl  *string `json:"file,omitempty"`
+	CreatedAt int64   `json:"created_at"`
 }
 
 // ChatDeliverPayload represents chat deliver payload
@@ -61,6 +63,7 @@ type ChatDeliverPayload struct {
 	SendAt    string  `json:"send_at" mapstructure:"send_at"`
 	ReplyId   *string `json:"reply_id,omitempty" mapstructure:"reply_id"`
 	FileUrl   *string `json:"file,omitempty" mapstructure:"file"`
+	CreatedAt int64   `json:"created_at" mapstructure:"created_at"`
 }
 
 // Event represents RabbitMQ message structure
