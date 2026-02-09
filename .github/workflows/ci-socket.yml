@@ -1,7 +1,5 @@
 name: LINKLIAN-SOCKET CI
 
-# Trigger this workflow on push and pull requests to main/staging branches
-# Only trigger when relevant files are changed (Go code, config, Docker, CI workflow)
 on:
   push:
     branches: ["main", "staging"]
@@ -41,12 +39,8 @@ concurrency:
 
 jobs:
   ci:
-    name: Go CI (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    name: Go CI (linux)
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
@@ -58,11 +52,10 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Make script executable (non-windows)
-        if: runner.os != 'Windows'
+      - name: Make script executable
         run: chmod +x ./go-ci.sh
 
-      - name: Run Go CI (gofmt/vet/test/build)
+      - name: Run Go CI (gofmt / vet / deps / build / test)
         shell: bash
         run: |
-          bash ./go-ci.sh all
+          ./go-ci.sh all
