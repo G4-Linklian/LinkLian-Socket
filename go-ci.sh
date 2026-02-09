@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODE="${1:-all}" # help | format | vet | deps | build | test | all
+MODE="${1:-all}" # help | secret | sca | sast | security | format | vet | deps | build | test | all | full
 
 # ---------- color codes ----------
 RED='\033[0;31m'
@@ -70,8 +70,6 @@ print_summary() {
   echo -e "Total: $total | ${GREEN}Passed: $passed_count${NC} | ${RED}Failed: $failed_count${NC}"
   echo -e "${BLUE}════════════════════════════════════════${NC}"
   echo
-
-  [[ $failed_count -eq 0 ]]
 }
 
 # ---------- helpers ----------
@@ -104,28 +102,69 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "$1" "Tool required" "" "Install '$1' then retry"
 }
 
+ensure_go_tool() {
+  # ensure_go_tool <binary> <module@version>
+  local bin="$1" mod="$2"
+  local gopath gobin
+
+  gopath="$(go env GOPATH 2>/dev/null || true)"
+  [[ -z "$gopath" ]] && die "$bin" "Tool installation" "GOPATH is empty" "Fix Go install/env then retry"
+
+  gobin="${GOBIN:-$gopath/bin}"
+  mkdir -p "$gobin"
+
+  # already in PATH?
+  if command -v "$bin" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  # exists in GOBIN but PATH not updated?
+  if [[ -x "$gobin/$bin" ]]; then
+    export PATH="$gobin:$PATH"
+    return 0
+  fi
+
+  step "Install $bin" "Missing '$bin' — installing via: go install $mod"
+  run "go install $mod" "Install $bin" "Tool installation" \
+"go install $mod
+# then rerun:
+./go-ci.sh $MODE"
+
+  export PATH="$gobin:$PATH"
+
+  command -v "$bin" >/dev/null 2>&1 || die "$bin" "Tool installation" \
+"Installed but still not found in PATH (expected in $gobin)" \
+"Add to PATH:
+export PATH=\"$gobin:\$PATH\""
+}
+
 usage() {
   cat <<'EOF'
 Usage:
   ./go-ci.sh [mode]
 
 Modes:
-  help      Show this help
-  format    gofmt check (fails if changes needed)
-  vet       go vet ./...
-  deps      go mod download
-  build     go build ./...
-  test      go test ./...
-  all       runs: format -> vet -> deps -> build -> test
+  help        Show this help
+
+  secret      Secret scan (gitleaks)
+  sca         Dependency vuln scan (govulncheck)
+  sast        SAST scan (gosec)
+  security    runs: secret -> sca -> sast
+
+  format      gofmt check (fails if changes needed)
+  vet         go vet ./...
+  deps        go mod download
+  build       go build ./...
+  test        go test ./...
+  all         runs: format -> vet -> deps -> build -> test
+
+  full        runs: security -> all  (matches queue CI coverage)
 
 Examples:
   chmod +x go-ci.sh
-  ./go-ci.sh format
-  ./go-ci.sh vet
-  ./go-ci.sh deps
-  ./go-ci.sh build
-  ./go-ci.sh test
+  ./go-ci.sh security
   ./go-ci.sh all
+  ./go-ci.sh full
 EOF
 }
 
@@ -138,13 +177,53 @@ fi
 need_cmd go
 
 # ---------- register tests (for summary) ----------
+add_test "gitleaks (secret scan)"
+add_test "govulncheck (SCA)"
+add_test "gosec (SAST)"
 add_test "gofmt (style)"
 add_test "go vet (static analysis)"
 add_test "go mod download"
 add_test "go build"
 add_test "go test (unit)"
 
-# ---------- steps ----------
+# ---------- security steps ----------
+run_secret() {
+  step "gitleaks (secret scan)" "Detects leaked secrets (tokens/keys/passwords) in the working tree."
+  ensure_go_tool "gitleaks" "github.com/gitleaks/gitleaks/v8@latest"
+  run "gitleaks detect --redact --no-git" "gitleaks (secret scan)" "Secret scanning" \
+"gitleaks detect --redact --no-git
+# Remove secrets, rotate keys, then rerun:
+./go-ci.sh secret"
+  mark_passed "gitleaks (secret scan)"
+}
+
+run_sca() {
+  step "govulncheck (SCA)" "Checks known vulnerabilities in Go stdlib + module dependencies."
+  ensure_go_tool "govulncheck" "golang.org/x/vuln/cmd/govulncheck@latest"
+  run "govulncheck ./..." "govulncheck (SCA)" "Dependency vulnerability scanning" \
+"govulncheck ./...
+# If it's stdlib issues: upgrade Go (go.mod/toolchain) then rerun:
+./go-ci.sh sca"
+  mark_passed "govulncheck (SCA)"
+}
+
+run_sast() {
+  step "gosec (SAST)" "Analyzes Go code for common security issues (crypto, file perms, injections)."
+  ensure_go_tool "gosec" "github.com/securego/gosec/v2/cmd/gosec@latest"
+  run "gosec ./..." "gosec (SAST)" "Static application security testing" \
+"gosec ./...
+# Fix findings or tune rules, then rerun:
+./go-ci.sh sast"
+  mark_passed "gosec (SAST)"
+}
+
+run_security() {
+  run_secret
+  run_sca
+  run_sast
+}
+
+# ---------- quality/build/test steps ----------
 run_format() {
   step "gofmt (style)" "Checks Go formatting (spacing/imports/indentation)."
   local files
@@ -183,7 +262,7 @@ go clean -modcache && go mod download
 run_build() {
   step "go build" "Compiles packages to ensure the project builds."
   run "go build -v ./..." "go build" "Compilation" \
-"go build ./...
+"go build -v ./...
 # Fix compile errors above, then rerun:
 ./go-ci.sh build"
   mark_passed "go build"
@@ -198,13 +277,26 @@ run_test() {
   mark_passed "go test (unit)"
 }
 
+# ---------- run selected mode ----------
 case "$MODE" in
-  format) run_format ;;
-  vet)    run_vet ;;
-  deps)   run_deps ;;
-  build)  run_build ;;
-  test)   run_test ;;
+  secret)   run_secret ;;
+  sca)      run_sca ;;
+  sast)     run_sast ;;
+  security) run_security ;;
+  format)   run_format ;;
+  vet)      run_vet ;;
+  deps)     run_deps ;;
+  build)    run_build ;;
+  test)     run_test ;;
   all)
+    run_format
+    run_vet
+    run_deps
+    run_build
+    run_test
+    ;;
+  full)
+    run_security
     run_format
     run_vet
     run_deps
