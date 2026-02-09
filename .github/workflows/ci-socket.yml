@@ -10,7 +10,7 @@ on:
       - "Dockerfile"
       - "docker-compose.yml"
       - ".github/workflows/ci-socket.yml"
-      - "go-ci.sh"          #Rerun CI when .sh updated
+      - "go-ci.sh"          #Rerun CI when . sh updated
       - "cmd/**"
       - "internal/**"
       - "pkg/**"
@@ -26,7 +26,7 @@ on:
       - "Dockerfile"
       - "docker-compose.yml"
       - ".github/workflows/ci-socket.yml"
-      - "go-ci.sh"          #Rerun CI when .sh updated
+      - "go-ci.sh"          #Rerun CI when . sh updated
       - "cmd/**"
       - "internal/**"
       - "pkg/**"
@@ -58,9 +58,10 @@ jobs:
 
       # ---------- Secret scan ----------
       - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@v2
-        with:
-          args: detect --redact --no-git
+        run: |
+          set -euo pipefail
+          go install github.com/gitleaks/gitleaks/v8@latest
+          "$HOME/go/bin/gitleaks" detect --redact --no-git
 
       # ---------- Go setup ----------
       - name: Setup Go
@@ -69,7 +70,14 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # ---------- SAST (gosec) ----------
+      # ---------- SCA (dependency vulnerabilities) ----------
+      - name: SCA (govulncheck)
+        run: |
+          set -euo pipefail
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$HOME/go/bin/govulncheck" ./...
+
+      # ---------- SAST (code patterns) ----------
       - name: SAST (gosec) -> SARIF
         run: |
           set -euo pipefail
