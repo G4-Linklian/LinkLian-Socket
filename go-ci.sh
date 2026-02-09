@@ -79,12 +79,158 @@ step() {
   echo "    $2"
 }
 
+# ---------- CI-friendly reporting ----------
+extract_locations() {
+  # extract file:line(:col) from output, keep file list unique
+  grep -Eo '([A-Za-z0-9_./-]+\.(go|mod|sum)):[0-9]+(:[0-9]+)?' | \
+    sort -u | head -n 8
+}
+
+headline_from_output() {
+  awk 'NF{print; exit}' | head -n 1
+}
+
+print_ci_summary_block() {
+  # print_ci_summary_block "<step>" "<status>" "<cause>" "<where>" "<what_to_do>"
+  local step_name="$1" status="$2" cause="$3" where="$4" todo="$5"
+
+  echo
+  echo -e "${BLUE}════════════════════════════════════════${NC}"
+  echo -e "${BLUE}  CI SUMMARY — $step_name${NC}"
+  echo -e "${BLUE}════════════════════════════════════════${NC}"
+  echo -e "Status : $status"
+  [[ -n "$cause" ]] && echo -e "Cause  : $cause"
+
+  if [[ -n "$where" ]]; then
+    echo -e "Where  :"
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && echo "  - $line"
+    done <<< "$where"
+  fi
+
+  if [[ -n "$todo" ]]; then
+    echo -e "Next   :"
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && echo "  $line"
+    done <<< "$todo"
+  fi
+
+  echo -e "${BLUE}════════════════════════════════════════${NC}"
+}
+
+print_pass_block() {
+  # print_pass_block "<step>" "<note>"
+  local step_name="$1" note="${2:-OK}"
+  print_ci_summary_block "$step_name" "✅ PASS" "$note" "" ""
+}
+
+summarize_gitleaks() {
+  local out="$1"
+  local cause where
+  cause="$(printf "%s" "$out" | grep -E 'Leak|Found|detected|hits|entropy|rule' -m 1 || true)"
+  where="$(printf "%s" "$out" | extract_locations || true)"
+  [[ -z "$cause" ]] && cause="$(printf "%s" "$out" | headline_from_output)"
+  print_ci_summary_block "gitleaks (secret scan)" "❌ FAIL" \
+"${cause:-Secrets detected}" "$where" \
+$'1) Remove secrets from repo/history if needed\n2) Rotate keys/tokens immediately\n3) Rerun: ./go-ci.sh secret'
+}
+
+summarize_govulncheck() {
+  local out="$1"
+  local found_in fixed_in where cause
+  found_in="$(printf "%s" "$out" | grep -E 'Found in:' -m 1 | sed 's/^[[:space:]]*//')"
+  fixed_in="$(printf "%s" "$out" | grep -E 'Fixed in:' -m 1 | sed 's/^[[:space:]]*//')"
+  where="$(printf "%s" "$out" | extract_locations || true)"
+
+  cause="Vulnerable Go stdlib/deps reachable by your code"
+  [[ -n "$found_in" ]] && cause="$cause • $found_in"
+  [[ -n "$fixed_in" ]] && cause="$cause • $fixed_in"
+
+  print_ci_summary_block "govulncheck (SCA)" "❌ FAIL" \
+"$cause" "$where" \
+$'1) If stdlib: upgrade Go/toolchain to a fixed version (example: >= go1.24.13)\n2) Rerun: govulncheck ./...\n3) Then: ./go-ci.sh sca'
+}
+
+summarize_gosec() {
+  local out="$1"
+  local cause where
+  cause="$(printf "%s" "$out" | grep -E 'G[0-9]{3}|Issues|Confidence|Severity' -m 1 || true)"
+  where="$(printf "%s" "$out" | extract_locations || true)"
+  [[ -z "$cause" ]] && cause="$(printf "%s" "$out" | headline_from_output)"
+  print_ci_summary_block "gosec (SAST)" "❌ FAIL" \
+"${cause:-Security issues found by gosec}" "$where" \
+$'1) Fix findings or add justified suppressions\n2) Rerun: gosec ./...\n3) Then: ./go-ci.sh sast'
+}
+
+summarize_gofmt() {
+  local files="$1"
+  print_ci_summary_block "gofmt (style)" "❌ FAIL" \
+"Files are not formatted" "$files" \
+$'1) Run: gofmt -w .\n2) Commit formatting changes\n3) Then: ./go-ci.sh format'
+}
+
+summarize_govet() {
+  local out="$1"
+  local cause where
+  cause="$(printf "%s" "$out" | headline_from_output)"
+  where="$(printf "%s" "$out" | extract_locations || true)"
+  print_ci_summary_block "go vet (static analysis)" "❌ FAIL" \
+"${cause:-go vet reported issues}" "$where" \
+$'1) Fix vet warnings/errors\n2) Rerun: go vet ./...\n3) Then: ./go-ci.sh vet'
+}
+
+summarize_gomod() {
+  local out="$1"
+  local cause
+  cause="$(printf "%s" "$out" | grep -E 'checksum|sum|mod|proxy|TLS|timeout|denied|404|authentication|unrecognized import path' -m 1 || true)"
+  [[ -z "$cause" ]] && cause="$(printf "%s" "$out" | headline_from_output)"
+  print_ci_summary_block "go mod download" "❌ FAIL" \
+"${cause:-Dependency download/verify failed}" "" \
+$'1) Try: go clean -modcache && go mod download\n2) Check GOPROXY / network / auth\n3) Then: ./go-ci.sh deps'
+}
+
+summarize_gobuild() {
+  local out="$1"
+  local cause where
+  cause="$(printf "%s" "$out" | grep -E 'undefined:|cannot find|type .* has no|missing|build failed|error:' -m 1 || true)"
+  [[ -z "$cause" ]] && cause="$(printf "%s" "$out" | headline_from_output)"
+  where="$(printf "%s" "$out" | extract_locations || true)"
+  print_ci_summary_block "go build" "❌ FAIL" \
+"${cause:-Compilation failed}" "$where" \
+$'1) Fix compile errors above\n2) Rerun: go build -v ./...\n3) Then: ./go-ci.sh build'
+}
+
+summarize_gotest() {
+  local out="$1"
+  local cause where
+  cause="$(printf "%s" "$out" | grep -E '^--- FAIL:|panic:|FAIL|race' -m 1 || true)"
+  [[ -z "$cause" ]] && cause="$(printf "%s" "$out" | headline_from_output)"
+  where="$(printf "%s" "$out" | extract_locations || true)"
+  print_ci_summary_block "go test (unit)" "❌ FAIL" \
+"${cause:-Unit tests failed}" "$where" \
+$'1) Inspect failing tests\n2) Rerun: go test -v ./... -count=1\n3) Then: ./go-ci.sh test'
+}
+
 die() {
   echo
   echo -e "${RED}❌ FAIL at: $1${NC}"
   echo "    What it checks: $2"
   [[ -n "${3:-}" ]] && { echo "    Details:"; echo "$3"; }
   [[ -n "${4:-}" ]] && { echo; echo "    👉 Fix (run these):"; echo "$4"; }
+
+  # ---- CI-friendly summary (per step) ----
+  case "$1" in
+    "gitleaks (secret scan)") summarize_gitleaks "${3:-}" ;;
+    "govulncheck (SCA)")      summarize_govulncheck "${3:-}" ;;
+    "gosec (SAST)")           summarize_gosec "${3:-}" ;;
+    "gofmt (style)")          summarize_gofmt "${3:-}" ;;
+    "go vet (static analysis)") summarize_govet "${3:-}" ;;
+    "go mod download")        summarize_gomod "${3:-}" ;;
+    "go build")               summarize_gobuild "${3:-}" ;;
+    "go test (unit)")         summarize_gotest "${3:-}" ;;
+    *) print_ci_summary_block "$1" "❌ FAIL" "See logs above" "" "" ;;
+  esac
+
   mark_failed "$1"
   print_summary || true
   exit 1
@@ -195,6 +341,7 @@ run_secret() {
 # Remove secrets, rotate keys, then rerun:
 ./go-ci.sh secret"
   mark_passed "gitleaks (secret scan)"
+  print_pass_block "gitleaks (secret scan)" "No leaked tokens/keys/passwords detected"
 }
 
 run_sca() {
@@ -205,6 +352,7 @@ run_sca() {
 # If it's stdlib issues: upgrade Go (go.mod/toolchain) then rerun:
 ./go-ci.sh sca"
   mark_passed "govulncheck (SCA)"
+  print_pass_block "govulncheck (SCA)" "No reachable vulnerabilities found in stdlib/deps"
 }
 
 run_sast() {
@@ -215,6 +363,7 @@ run_sast() {
 # Fix findings or tune rules, then rerun:
 ./go-ci.sh sast"
   mark_passed "gosec (SAST)"
+  print_pass_block "gosec (SAST)" "No high-confidence security issues found"
 }
 
 run_security() {
@@ -229,14 +378,14 @@ run_format() {
   local files
   files="$(gofmt -l . || true)"
   if [[ -n "$files" ]]; then
-    die "gofmt (style)" "Code style / formatting" \
-"These files are not formatted:
-$files" \
+    summarize_gofmt "$files"
+    die "gofmt (style)" "Code style / formatting" "$files" \
 "gofmt -w .
 # then rerun:
 ./go-ci.sh format"
   fi
   mark_passed "gofmt (style)"
+  print_pass_block "gofmt (style)" "Formatting OK (no files need gofmt)"
 }
 
 run_vet() {
@@ -246,6 +395,7 @@ run_vet() {
 # Fix reported issues, then rerun:
 ./go-ci.sh vet"
   mark_passed "go vet (static analysis)"
+  print_pass_block "go vet (static analysis)" "No vet issues detected"
 }
 
 run_deps() {
@@ -257,6 +407,7 @@ go clean -modcache && go mod download
 # then rerun:
 ./go-ci.sh deps"
   mark_passed "go mod download"
+  print_pass_block "go mod download" "Dependencies downloaded/verified"
 }
 
 run_build() {
@@ -266,6 +417,7 @@ run_build() {
 # Fix compile errors above, then rerun:
 ./go-ci.sh build"
   mark_passed "go build"
+  print_pass_block "go build" "Compilation OK"
 }
 
 run_test() {
@@ -275,6 +427,7 @@ run_test() {
 # Fix failing tests, then rerun:
 ./go-ci.sh test"
   mark_passed "go test (unit)"
+  print_pass_block "go test (unit)" "All unit tests passed"
 }
 
 # ---------- run selected mode ----------
