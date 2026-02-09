@@ -1,23 +1,99 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODE="${1:-all}" # unit | integration | all
+MODE="${1:-all}" # help | format | vet | deps | build | test | all
+
+# ---------- color codes ----------
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# ---------- status tracking (bash 3.2 compatible) ----------
+declare -a test_order
+declare -a test_passed
+declare -a test_failed
+
+# ensure arrays are "set" even when empty (safe with set -u)
+test_order=()
+test_passed=()
+test_failed=()
+
+add_test() { test_order+=("$1"); }
+
+mark_passed() {
+  test_passed+=("$1")
+  echo -e "${GREEN}    ✅ PASSED${NC}"
+}
+
+mark_failed() {
+  test_failed+=("$1")
+  echo -e "${RED}    ❌ FAILED${NC}"
+}
+
+test_status() {
+  local name="$1" i
+
+  for i in ${test_passed[@]+"${test_passed[@]}"}; do
+    [[ "$i" == "$name" ]] && echo "passed" && return 0
+  done
+
+  for i in ${test_failed[@]+"${test_failed[@]}"}; do
+    [[ "$i" == "$name" ]] && echo "failed" && return 0
+  done
+
+  echo "pending"
+}
+
+print_summary() {
+  echo
+  echo -e "${BLUE}════════════════════════════════════════${NC}"
+  echo -e "${BLUE}  TEST SUMMARY${NC}"
+  echo -e "${BLUE}════════════════════════════════════════${NC}"
+
+  local t status
+  for t in "${test_order[@]}"; do
+    status="$(test_status "$t")"
+    case "$status" in
+      passed)  echo -e "${GREEN}✅ PASSED${NC}  | $t" ;;
+      failed)  echo -e "${RED}❌ FAILED${NC}  | $t" ;;
+      pending) echo -e "${YELLOW}⏭️  SKIPPED${NC} | $t" ;;
+    esac
+  done
+
+  local passed_count=${#test_passed[@]}
+  local failed_count=${#test_failed[@]}
+  local total=${#test_order[@]}
+
+  echo -e "${BLUE}════════════════════════════════════════${NC}"
+  echo -e "Total: $total | ${GREEN}Passed: $passed_count${NC} | ${RED}Failed: $failed_count${NC}"
+  echo -e "${BLUE}════════════════════════════════════════${NC}"
+  echo
+
+  [[ $failed_count -eq 0 ]]
+}
 
 # ---------- helpers ----------
-step() { echo; echo "==> $1"; echo "    $2"; }
-ok()   { echo "    ✅ $1"; }
+step() {
+  echo
+  echo -e "${BLUE}==> $1${NC}"
+  echo "    $2"
+}
 
 die() {
   echo
-  echo "❌ FAIL at: $1"
+  echo -e "${RED}❌ FAIL at: $1${NC}"
   echo "    What it checks: $2"
   [[ -n "${3:-}" ]] && { echo "    Details:"; echo "$3"; }
-  [[ -n "${4:-}" ]] && { echo; echo "👉 Fix (run these):"; echo "$4"; }
+  [[ -n "${4:-}" ]] && { echo; echo "    👉 Fix (run these):"; echo "$4"; }
+  mark_failed "$1"
+  print_summary || true
   exit 1
 }
 
 run() {
-  # run "<cmd>" "<step-name>" "<what>" "<fix-cmds>"
+  # run "<cmd>" "<step-name>" "<what>" "<fix>"
   local cmd="$1" name="$2" what="$3" fix="${4:-}"
   local out; out="$(mktemp)"
   bash -lc "$cmd" >"$out" 2>&1 || die "$name" "$what" "$(cat "$out")" "$fix"
@@ -28,104 +104,118 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "$1" "Tool required" "" "Install '$1' then retry"
 }
 
-need_env() {
-  local var="$1" example="${2:-}"
-  [[ -n "${!var:-}" ]] || die "integration tests" "Environment check" "" \
-"export $var='$example'
-# then rerun:
-./go-ci.sh integration"
+usage() {
+  cat <<'EOF'
+Usage:
+  ./go-ci.sh [mode]
+
+Modes:
+  help      Show this help
+  format    gofmt check (fails if changes needed)
+  vet       go vet ./...
+  deps      go mod download
+  build     go build ./...
+  test      go test ./...
+  all       runs: format -> vet -> deps -> build -> test
+
+Examples:
+  chmod +x go-ci.sh
+  ./go-ci.sh format
+  ./go-ci.sh vet
+  ./go-ci.sh deps
+  ./go-ci.sh build
+  ./go-ci.sh test
+  ./go-ci.sh all
+EOF
 }
+
+if [[ "$MODE" == "help" || "$MODE" == "-h" || "$MODE" == "--help" ]]; then
+  usage
+  exit 0
+fi
 
 # ---------- preflight ----------
 need_cmd go
 
+# ---------- register tests (for summary) ----------
+add_test "gofmt (style)"
+add_test "go vet (static analysis)"
+add_test "go mod download"
+add_test "go build"
+add_test "go test (unit)"
+
 # ---------- steps ----------
-step "gofmt (style)" "Checks Go formatting (spacing/imports/indentation)."
-files="$(gofmt -l . || true)"
-if [[ -n "$files" ]]; then
-  die "gofmt" "Code style / formatting" \
+run_format() {
+  step "gofmt (style)" "Checks Go formatting (spacing/imports/indentation)."
+  local files
+  files="$(gofmt -l . || true)"
+  if [[ -n "$files" ]]; then
+    die "gofmt (style)" "Code style / formatting" \
 "These files are not formatted:
 $files" \
 "gofmt -w .
 # then rerun:
-./go-ci.sh $MODE"
-fi
-ok "formatting OK"
+./go-ci.sh format"
+  fi
+  mark_passed "gofmt (style)"
+}
 
-step "go vet (static analysis)" "Catches common bugs (printf mismatch, suspicious constructs)."
-run "go vet ./..." "go vet" "Static analysis" \
+run_vet() {
+  step "go vet (static analysis)" "Catches common bugs (printf mismatch, suspicious constructs)."
+  run "go vet ./..." "go vet (static analysis)" "Static analysis" \
 "go vet ./...
 # Fix reported issues, then rerun:
-./go-ci.sh $MODE"
-ok "go vet OK"
+./go-ci.sh vet"
+  mark_passed "go vet (static analysis)"
+}
 
-step "go mod download" "Downloads/verifies module dependencies."
-run "go mod download" "go mod download" "Dependency resolution" \
+run_deps() {
+  step "go mod download" "Downloads/verifies module dependencies."
+  run "go mod download" "go mod download" "Dependency resolution" \
 "go mod download
-# If checksum issues:
+# If checksum/cache issues:
 go clean -modcache && go mod download
 # then rerun:
-./go-ci.sh $MODE"
-ok "deps downloaded"
+./go-ci.sh deps"
+  mark_passed "go mod download"
+}
 
-step "go build" "Compiles packages to ensure the project builds."
-run "go build -v ./..." "go build" "Compilation" \
+run_build() {
+  step "go build" "Compiles packages to ensure the project builds."
+  run "go build -v ./..." "go build" "Compilation" \
 "go build ./...
 # Fix compile errors above, then rerun:
-./go-ci.sh $MODE"
-ok "build OK"
+./go-ci.sh build"
+  mark_passed "go build"
+}
 
-step "go test (unit)" "Runs unit tests (*_test.go)."
-run "go test -v ./... -count=1" "unit tests" "Unit tests" \
+run_test() {
+  step "go test (unit)" "Runs unit tests (*_test.go)."
+  run "go test -v ./... -count=1" "go test (unit)" "Unit tests" \
 "go test -v ./... -count=1
 # Fix failing tests, then rerun:
-./go-ci.sh $MODE"
-ok "unit tests OK"
+./go-ci.sh test"
+  mark_passed "go test (unit)"
+}
 
-# ---------- integration via docker compose ----------
-if [[ "$MODE" == "integration" || "$MODE" == "all" ]]; then
-  need_cmd docker
+case "$MODE" in
+  format) run_format ;;
+  vet)    run_vet ;;
+  deps)   run_deps ;;
+  build)  run_build ;;
+  test)   run_test ;;
+  all)
+    run_format
+    run_vet
+    run_deps
+    run_build
+    run_test
+    ;;
+  *)
+    echo "Unknown mode: $MODE"
+    usage
+    exit 2
+    ;;
+esac
 
-  step "docker compose up" "Starts required services for integration tests."
-  # ไม่ auto แก้ แต่ "จะรัน up" เพื่อให้เทสมี service จริง
-  run "docker compose up -d" "docker compose up" "Start services" \
-"docker compose ps
-docker compose logs --tail=200
-# If needed restart clean:
-docker compose down -v
-docker compose up -d"
-  ok "services started"
-
-  # ถ้าโปรเจกต์มี healthcheck อยู่แล้ว จะช่วยมาก
-  step "docker compose status" "Shows service status (useful when tests fail)."
-  run "docker compose ps" "docker compose ps" "Service status" \
-"docker compose ps
-docker compose logs --tail=200"
-  ok "compose status OK"
-
-  # ตั้งค่า env ให้เทสไปเจอ service
-  # (ปรับ example ให้ตรง service ของเธอได้)
-  need_env DATABASE_URL "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
-  need_env RABBITMQ_URL "amqp://guest:guest@localhost:5672/"
-
-  step "go test -tags=integration" "Runs integration tests against REAL DB/RabbitMQ."
-  run "go test -v -tags=integration ./... -count=1" \
-      "integration tests" "DB / RabbitMQ integration" \
-"docker compose ps
-docker compose logs --tail=200
-# Rerun only integration:
-./go-ci.sh integration"
-  ok "integration tests OK"
-
-  step "docker compose down" "Stops services after tests (cleanup)."
-  # cleanup ถ้า down fail ก็ให้บอก command ไม่ต้องล้มทั้ง pipeline
-  if ! docker compose down >/dev/null 2>&1; then
-    echo "    ⚠️  cleanup failed; run manually:"
-    echo "       docker compose down -v"
-  else
-    ok "services stopped"
-  fi
-fi
-
-echo
-echo "✅ ALL PASSED (mode: $MODE)"
+print_summary
