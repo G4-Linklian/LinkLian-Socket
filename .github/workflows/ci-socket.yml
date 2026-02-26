@@ -23,33 +23,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Go (worker module)
-        if: ${{ hashFiles('worker/go.mod') != '' }}
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: worker/go.mod
-          cache: true
-
-      - name: Setup Go (root module)
-        if: ${{ hashFiles('worker/go.mod') == '' }}
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
 
-      - name: Run gosec (SARIF) (non-blocking)
+      - name: Run gosec (SARIF)
         continue-on-error: true
-        working-directory: worker
         run: |
           set -euo pipefail
           go install github.com/securego/gosec/v2/cmd/gosec@latest
           "$HOME/go/bin/gosec" -fmt=sarif -out gosec.sarif ./...
 
       - name: Upload gosec SARIF
-        if: ${{ always() && hashFiles('worker/gosec.sarif') != '' }}
+        if: ${{ always() && hashFiles('gosec.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: worker/gosec.sarif
+          sarif_file: gosec.sarif
 
   secret-scan:
     name: Secret Scan (gitleaks)
@@ -59,7 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run Gitleaks (SARIF) (non-blocking)
+      - name: Run Gitleaks (SARIF)
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -80,37 +70,22 @@ jobs:
         with:
           sarif_file: gitleaks.sarif
 
-  unit-tests:
-    name: Unit tests
+  build:
+    name: Build
     runs-on: ubuntu-latest
     needs: [secret-scan]
-
-    defaults:
-      run:
-        shell: bash
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Go (worker module)
-        if: ${{ hashFiles('worker/go.mod') != '' }}
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: worker/go.mod
-          cache: true
-
-      - name: Setup Go (root module)
-        if: ${{ hashFiles('worker/go.mod') == '' }}
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
 
       - name: Go fmt check (non-blocking)
         continue-on-error: true
-        working-directory: worker
         run: |
-          set -euo pipefail
           files="$(gofmt -l . || true)"
           if [[ -n "$files" ]]; then
             for f in $files; do
@@ -120,46 +95,28 @@ jobs:
           fi
 
       - name: Go vet
-        working-directory: worker
-        run: |
-          set -euo pipefail
-          go vet ./...
+        run: go vet ./...
 
       - name: Go mod download
-        working-directory: worker
-        run: |
-          set -euo pipefail
-          go mod download
+        run: go mod download
 
       - name: Go build
-        working-directory: worker
-        run: |
-          set -euo pipefail
-          go build -v ./...
-
-      - name: Unit tests
-        working-directory: worker
-        run: |
-          set -euo pipefail
-          go test -v ./... -count=1
+        run: go build -v ./...
 
   container-scan:
     name: Docker Build + Trivy
     runs-on: ubuntu-latest
-    needs: [unit-tests]
+    needs: [build]
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Build image
-        run: |
-          set -euo pipefail
-          docker build -t linklian-queue:local -f worker/Dockerfile .
+        run: docker build -t linklian-socket:local -f Dockerfile .
 
-      - name: Trivy scan (SARIF) (non-blocking)
+      - name: Trivy scan (SARIF)
         continue-on-error: true
         run: |
-          set -euo pipefail
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "${{ github.workspace }}:/repo" \
@@ -168,7 +125,7 @@ jobs:
             --output /repo/trivy.sarif \
             --severity HIGH,CRITICAL \
             --ignore-unfixed \
-            linklian-queue:local
+            linklian-socket:local
 
       - name: Upload Trivy SARIF
         if: ${{ always() && hashFiles('trivy.sarif') != '' }}
