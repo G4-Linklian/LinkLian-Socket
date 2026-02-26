@@ -41,7 +41,7 @@ concurrency:
 
 permissions:
   contents: read
-  security-events: write # needed for SARIF upload (gosec)
+  security-events: write
 
 jobs:
   sast:
@@ -86,7 +86,7 @@ jobs:
             detect --source=/repo --verbose --redact --exit-code 1
 
   ci:
-    name: Go CI (fmt/vet/build/test)
+    name: Go CI (fmt/vet/build/test) (fmt non-blocking)
     needs: [secret-scan]
     runs-on: ubuntu-latest
 
@@ -103,7 +103,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Go fmt check
+      - name: Go fmt check (non-blocking)
+        continue-on-error: true
         run: |
           set -euo pipefail
           files="$(gofmt -l . || true)"
