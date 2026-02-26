@@ -4,8 +4,7 @@ on:
   pull_request:
     branches: [main, staging]
     paths:
-      - '**'
-
+      - "**"
   workflow_dispatch:
 
 concurrency:
@@ -14,7 +13,7 @@ concurrency:
 
 permissions:
   contents: read
-  security-events: write # needed for SARIF upload
+  security-events: write # required for SARIF upload
 
 jobs:
   sast:
@@ -24,10 +23,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Go
+      # If worker/go.mod exists -> use it
+      - name: Setup Go (worker module)
+        if: ${{ hashFiles('worker/go.mod') != '' }}
         uses: actions/setup-go@v5
         with:
           go-version-file: worker/go.mod
+          cache: true
+
+      # Else fallback to root go.mod
+      - name: Setup Go (root module)
+        if: ${{ hashFiles('worker/go.mod') == '' }}
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
           cache: true
 
       - name: Run gosec (SARIF) (non-blocking)
@@ -39,8 +48,8 @@ jobs:
           "$HOME/go/bin/gosec" -fmt=sarif -out gosec.sarif ./...
 
       - name: Upload SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        if: ${{ always() && hashFiles('worker/gosec.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: worker/gosec.sarif
 
@@ -52,8 +61,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ถ้าอยากให้ไม่ block ให้ใส่ continue-on-error: true
-      - name: Run Gitleaks
+      # ถ้าอยากให้ secret scan ไม่ block ให้ใส่ continue-on-error: true
+      - name: Secret scan (gitleaks)
         uses: gitleaks/gitleaks-action@v2
         with:
           args: detect --redact --no-git
@@ -70,13 +79,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Go
+      - name: Setup Go (worker module)
+        if: ${{ hashFiles('worker/go.mod') != '' }}
         uses: actions/setup-go@v5
         with:
           go-version-file: worker/go.mod
           cache: true
 
-      # (เลือก) fmt เป็น warning ไม่ block แต่โชว์ annotation แบบ warning
+      - name: Setup Go (root module)
+        if: ${{ hashFiles('worker/go.mod') == '' }}
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Go fmt check (non-blocking)
         continue-on-error: true
         working-directory: worker
@@ -145,7 +161,7 @@ jobs:
             linklian-queue:local
 
       - name: Upload Trivy SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        if: ${{ always() && hashFiles('trivy.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy.sarif
