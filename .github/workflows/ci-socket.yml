@@ -1,4 +1,4 @@
-name: LINKLIAN-QUEUE CI
+name: LINKLIAN-SOCKET CI
 
 on:
   pull_request:
