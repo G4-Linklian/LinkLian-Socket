@@ -10,7 +10,7 @@ on:
       - "Dockerfile"
       - "docker-compose.yml"
       - ".github/workflows/ci-socket.yml"
-      - "go-ci.sh"          #Rerun CI when . sh updated
+      - "go-ci.sh"
       - "cmd/**"
       - "internal/**"
       - "pkg/**"
@@ -26,7 +26,7 @@ on:
       - "Dockerfile"
       - "docker-compose.yml"
       - ".github/workflows/ci-socket.yml"
-      - "go-ci.sh"          #Rerun CI when . sh updated
+      - "go-ci.sh"
       - "cmd/**"
       - "internal/**"
       - "pkg/**"
@@ -44,41 +44,20 @@ permissions:
   security-events: write # needed for SARIF upload (gosec)
 
 jobs:
-  ci:
-    name: Go CI + Security (linux)
+  sast:
+    name: SAST (gosec) -> SARIF
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        shell: bash
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # ---------- Secret scan ----------
-      - name: Secret scan (gitleaks)
-        run: |
-          set -euo pipefail
-          go install github.com/gitleaks/gitleaks/v8@latest
-          "$HOME/go/bin/gitleaks" detect --redact --no-git
-
-      # ---------- Go setup ----------
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
 
-      # ---------- SCA (dependency vulnerabilities) ----------
-      - name: SCA (govulncheck)
-        run: |
-          set -euo pipefail
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          "$HOME/go/bin/govulncheck" ./...
-
-      # ---------- SAST (code patterns) ----------
-      - name: SAST (gosec) -> SARIF
+      - name: Run gosec (SARIF)
         run: |
           set -euo pipefail
           go install github.com/securego/gosec/v2/cmd/gosec@latest
@@ -89,7 +68,39 @@ jobs:
         with:
           sarif_file: gosec.sarif
 
-      # ---------- Go CI (standalone) ----------
+  secret-scan:
+    name: Secret Scan (gitleaks)
+    needs: [sast]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Gitleaks (Free CLI)
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/repo \
+            zricethezav/gitleaks:latest \
+            detect --source=/repo --verbose --redact --exit-code 1
+
+  ci:
+    name: Go CI (fmt/vet/build/test)
+    needs: [secret-scan]
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Go fmt check
         run: |
           set -euo pipefail
