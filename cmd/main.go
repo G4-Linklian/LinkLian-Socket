@@ -11,7 +11,9 @@ import (
 	"linklian-api/internal/rabbitmq"
 	"linklian-api/internal/repository"
 	wsmanager "linklian-api/internal/websocket"
+	"linklian-api/pkg/logger"
 	"linklian-api/pkg/utils"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -35,7 +37,7 @@ func NewServer() (*Server, error) {
 	// Initialize RabbitMQ manager (optional)
 	var rabbitManager *rabbitmq.Manager
 	if cfg.RabbitMQOptional {
-		log.Println("⚠️ RabbitMQURL", cfg.RabbitMQURL)
+		logger.Log("RabbitMQURL", "NewServer", cfg.RabbitMQURL)
 		rabbitManager = rabbitmq.NewOptionalManager(cfg.RabbitMQURL)
 	} else {
 		var err error
@@ -69,16 +71,40 @@ func (s *Server) Start() error {
 	// Setup graceful shutdown
 	go s.setupGracefulShutdown()
 
+	// Start consuming from chat_events queue
+	s.startChatConsumer()
+
 	// Start server
-	utils.LogSuccess("Go WebSocket Server is running on port " + s.config.Port)
+	logger.Log("Go WebSocket Server is running on port "+s.config.Port, "Server.Start")
 	return http.ListenAndServe(":"+s.config.Port, nil)
+}
+
+// startChatConsumer starts consuming from the chat_events queue
+func (s *Server) startChatConsumer() {
+	go s.rabbitManager.StartConsumer(rabbitmq.QueueChatEvents, func(body []byte) error {
+		var event models.Message
+		if err := json.Unmarshal(body, &event); err != nil {
+			logger.Error("Failed to parse message from chat_events", "startChatConsumer", err)
+			return err
+		}
+
+		switch event.Type {
+		case "CHAT_DELIVER":
+			logger.Debug("Received CHAT_DELIVER from queue", "startChatConsumer", event)
+			s.wsHandler.HandleChatDeliver(event.Payload)
+		default:
+			logger.Warn("Unknown event type from chat_events: "+event.Type, "startChatConsumer")
+		}
+
+		return nil
+	})
 }
 
 // setupRoutes sets up HTTP routes
 func (s *Server) setupRoutes() {
-	http.HandleFunc("/ws", s.handleWebSocketConnection)
+	http.HandleFunc("/ws/chat", s.handleChatConnection)
+	http.HandleFunc("/ws/noti", s.handleNotiConnection)
 	http.HandleFunc("/health", s.httpHandler.HandleHealth)
-	http.HandleFunc("/ws/internal", s.handleInternalConnection)
 }
 
 // setupGracefulShutdown sets up graceful shutdown
@@ -90,19 +116,19 @@ func (s *Server) setupGracefulShutdown() {
 	})
 }
 
-// handleWebSocketConnection handles WebSocket connections
-func (s *Server) handleWebSocketConnection(w http.ResponseWriter, r *http.Request) {
-	// Upgrade HTTP connection to WebSocket
+// handleChatConnection handles WebSocket connections for chat (/ws/chat)
+func (s *Server) handleChatConnection(w http.ResponseWriter, r *http.Request) {
+	logger.Debug("Chat WebSocket connecting", "handleChatConnection")
+
 	conn, err := s.wsManager.UpgradeConnection(w, r)
 	if err != nil {
-		utils.LogError("WebSocket upgrade error", err)
+		logger.Error("WebSocket upgrade error", "handleChatConnection", err)
 		return
 	}
 
 	var clientInfo *models.ClientInfo
 
 	defer func() {
-		// Cleanup on disconnect
 		if clientInfo != nil {
 			s.wsManager.RemoveClient(clientInfo.UserID)
 		}
@@ -110,74 +136,81 @@ func (s *Server) handleWebSocketConnection(w http.ResponseWriter, r *http.Reques
 	}()
 
 	for {
-		// Read message from WebSocket
 		_, messageData, err := conn.ReadMessage()
 		if err != nil {
-			utils.LogError("WebSocket read error", err)
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				logger.Error("Chat WebSocket unexpected close", "handleChatConnection", err)
+			} else {
+				logger.Log("Chat WebSocket closed", "handleChatConnection")
+			}
 			break
 		}
 
 		var msg models.Message
 		if err := json.Unmarshal(messageData, &msg); err != nil {
-			utils.LogError("JSON parse error", err)
+			logger.Error("JSON parse error", "handleChatConnection", err)
 			continue
 		}
 
-		// Handle different message types
 		switch msg.Type {
 		case "JOIN_ROOM":
 			clientInfo = s.wsHandler.HandleJoinRoom(conn, msg.Payload)
-		case "REGISTER_NOTI":
-			clientInfo = s.wsHandler.HandleRegisterNoti(conn, msg.Payload)
 		case "CHAT_SEND":
 			if clientInfo != nil {
 				s.wsHandler.HandleChatSend(clientInfo, msg.Payload)
 			}
-		case "READ_NOTI":
-			if clientInfo != nil {
-				s.wsHandler.HandleReadNoti(clientInfo, msg.Payload)
-			}
+		case "CHAT_DELIVER":
+			logger.Debug("Received CHAT_DELIVER from queue", "handleChatConnection")
+			s.wsHandler.HandleChatDeliver(msg.Payload)
 		default:
-			utils.LogWarning("Unknown message type: " + msg.Type)
+			logger.Warn("Unknown chat message type: "+msg.Type, "handleChatConnection")
 		}
 	}
 }
 
-func (s *Server) handleInternalConnection(w http.ResponseWriter, r *http.Request) {
-	conn, err := s.wsManager.UpgradeConnection(w, r)
+// handleNotiConnection handles WebSocket connections for notifications (/ws/noti)
+func (s *Server) handleNotiConnection(w http.ResponseWriter, r *http.Request) {
+	logger.Debug("Noti WebSocket connecting", "handleNotiConnection")
 
+	conn, err := s.wsManager.UpgradeConnection(w, r)
 	if err != nil {
-		utils.LogError("WebSocket upgrade error", err)
+		logger.Error("WebSocket upgrade error", "handleNotiConnection", err)
 		return
 	}
-	defer conn.Close()
+
+	var clientInfo *models.ClientInfo
+
+	defer func() {
+		if clientInfo != nil {
+			s.wsManager.RemoveClient(clientInfo.UserID)
+		}
+		conn.Close()
+	}()
 
 	for {
-		_, msg, err := conn.ReadMessage()
+		_, messageData, err := conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(
-				err,
-				websocket.CloseGoingAway,
-				websocket.CloseAbnormalClosure,
-			) {
-				utils.LogError("Internal WebSocket unexpected close", err)
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				logger.Error("Noti WebSocket unexpected close", "handleNotiConnection", err)
 			} else {
-				utils.LogInfo("Internal WebSocket closed normally")
+				logger.Log("Noti WebSocket closed", "handleNotiConnection")
 			}
 			break
 		}
 
-		var event models.Message
-		if err := json.Unmarshal(msg, &event); err != nil {
-			utils.LogError("Internal JSON parse error", err)
+		var msg models.Message
+		if err := json.Unmarshal(messageData, &msg); err != nil {
+			logger.Error("JSON parse error", "handleNotiConnection", err)
 			continue
 		}
 
-		switch event.Type {
-		case "CHAT_DELIVER":
-			s.wsHandler.HandleChatDeliver(event.Payload)
+		switch msg.Type {
+		case "REGISTER_NOTI":
+			
+		case "READ_NOTI":
+
 		default:
-			utils.LogWarning("Unknown internal message type: " + event.Type)
+			logger.Warn("Unknown noti message type: "+msg.Type, "handleNotiConnection")
 		}
 	}
 }
@@ -185,10 +218,12 @@ func (s *Server) handleInternalConnection(w http.ResponseWriter, r *http.Request
 func main() {
 	server, err := NewServer()
 	if err != nil {
-		log.Fatalf("❌ Failed to create server: %v", err)
+		logger.Error("Failed to create server", "main", err)
+		log.Fatalf(" Failed to create server: %v", err)
 	}
 
 	if err := server.Start(); err != nil {
-		log.Fatalf("❌ Failed to start server: %v", err)
+		logger.Error("Failed to start server", "main", err)
+		log.Fatalf("Failed to start server: %v", err)
 	}
 }

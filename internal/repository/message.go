@@ -1,6 +1,8 @@
 package repository
 
-import "log"
+import (
+	"linklian-api/pkg/logger"
+)
 
 // MessageRepository defines the interface for message-related data operations
 type MessageRepository interface {
@@ -18,7 +20,7 @@ func NewStubMessageRepository() *StubMessageRepository {
 
 // MarkDelivered marks a message as delivered
 func (r *StubMessageRepository) MarkDelivered(messageID string) error {
-	log.Printf("📝 [REPO] MarkDelivered called for messageID: %s (Stub implementation)", messageID)
+	logger.Log("MarkDelivered called (Stub implementation)", "MarkDeliveredREPO", messageID)
 	// Output: Simulate DB update
 	return nil
 }
