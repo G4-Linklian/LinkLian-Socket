@@ -9,6 +9,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"linklian-api/internal/models"
+	"linklian-api/pkg/logger"
 )
 
 // Manager handles WebSocket connections and operations
@@ -69,7 +70,7 @@ func (m *Manager) BroadcastToRoom(chatId string, senderId string, messageType st
 
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
-		log.Printf("❌ Failed to marshal broadcast message: %v", err)
+		logger.Error("Failed to marshal broadcast message", "BroadcastToRoom", err)
 		return
 	}
 
@@ -89,7 +90,7 @@ func (m *Manager) BroadcastToRoom(chatId string, senderId string, messageType st
 			client.Mutex.Unlock()
 
 			if err != nil {
-				log.Printf("❌ Failed to send message to client %s: %v", client.UserID, err)
+				logger.Error("Failed to send message to client "+client.UserID, "BroadcastToRoom", err)
 				go m.RemoveClient(client.UserID)
 			}
 		}
