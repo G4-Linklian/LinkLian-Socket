@@ -34,9 +34,6 @@ WORKDIR /app
 # Copy binary from builder stage to a location not overwritten by volumes
 COPY --from=builder /app/main /usr/local/bin/linklian-socket
 
-# Copy .env file if it exists (optional)
-COPY --from=builder /app/.env* ./
-
 # Change ownership to appuser and ensure binary is executable
 RUN chown -R appuser:appuser /app && chmod +x /usr/local/bin/linklian-socket
 
