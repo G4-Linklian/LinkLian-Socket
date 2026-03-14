@@ -19,3 +19,9 @@ services:
       - .:/app
     working_dir: /app
     restart: unless-stopped
+    networks:
+      - linklian-net
+
+networks:
+  linklian-net:
+    external: true
