@@ -217,16 +217,28 @@ func (m *Manager) handleJoinLiveState(qaLiveId string, client *models.ClientInfo
 	
 	if err == nil && stateStr != "" {
 		var state map[string]interface{}
-		json.Unmarshal([]byte(stateStr), &state)
+		
+		if unmarshalErr := json.Unmarshal([]byte(stateStr), &state); unmarshalErr != nil {
+			logger.Warn("Failed to unmarshal live state", "WebSocket", unmarshalErr)
+			return 
+		}
 
-		msgBytes, _ := json.Marshal(map[string]interface{}{
-			"type": "LIVE_CURRENT_STATE", 
+		msgBytes, marshalErr := json.Marshal(map[string]interface{}{
+			"type":    "LIVE_CURRENT_STATE",
 			"payload": state,
 		})
-		
+		if marshalErr != nil {
+			logger.Warn("Failed to marshal LIVE_CURRENT_STATE message", "WebSocket", marshalErr)
+			return 
+		}
+
 		client.Mutex.Lock()
-		client.Socket.WriteMessage(websocket.TextMessage, msgBytes)
+		writeErr := client.Socket.WriteMessage(websocket.TextMessage, msgBytes)
 		client.Mutex.Unlock()
+
+		if writeErr != nil {
+			logger.Warn("Failed to send LIVE_CURRENT_STATE to client", "WebSocket", writeErr)
+		}
 	}
 }
 

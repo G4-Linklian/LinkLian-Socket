@@ -190,6 +190,8 @@ func (s *Server) handleChatConnection(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if clientInfo != nil {
 			s.wsManager.RemoveClient(clientInfo.UserID)
+		} else {
+			logger.Warn("ClientInfo is nil during defer cleanup in handleChatConnection", "handleChatConnection")
 		}
 		conn.Close()
 	}()
@@ -242,7 +244,12 @@ func (s *Server) handleQAConnection(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if clientInfo != nil {
 			s.wsManager.RemoveClient(clientInfo.UserID)
+		} 
+
+		if err := conn.Close(); err != nil {
+			logger.Warn("Failed to close connection", "WebSocket", err)
 		}
+
 		conn.Close()
 	}()
 
@@ -295,6 +302,8 @@ func (s *Server) handleNotiConnection(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if clientInfo != nil {
 			s.wsManager.RemoveClient(clientInfo.UserID)
+		} else {
+			logger.Warn("ClientInfo is nil during defer cleanup in handleNotiConnection", "handleNotiConnection")
 		}
 		conn.Close()
 	}()

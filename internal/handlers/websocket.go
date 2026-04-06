@@ -194,7 +194,10 @@ func (h *WebSocketHandler) HandleQAEvent(msg models.Message) {
         var p struct {
             SectionId interface{} `mapstructure:"section_id"`
         }
-        mapstructure.WeakDecode(msg.Payload, &p)
+        if err := mapstructure.WeakDecode(msg.Payload, &p); err != nil {
+			logger.Warn("Failed to decode QA_LIVE_STARTED payload", "HandleQAEvent", err)
+			return 
+		}
         
         sectionRoom := fmt.Sprintf("section_%v", p.SectionId)
 
