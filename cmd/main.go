@@ -249,8 +249,6 @@ func (s *Server) handleQAConnection(w http.ResponseWriter, r *http.Request) {
 		if err := conn.Close(); err != nil {
 			logger.Warn("Failed to close connection", "WebSocket", err)
 		}
-
-		conn.Close()
 	}()
 
 	for {
