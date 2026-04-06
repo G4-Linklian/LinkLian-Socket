@@ -9,34 +9,34 @@ import (
 	"github.com/rabbitmq/amqp091-go"
 )
 
-const exchangeName = "linklian_events"
-
-// RabbitMQ Event types (routing keys)
+// RabbitMQ Event types
 const (
 	EventChatMessage      = "chat.message"
+	EventQAAsk            = "qa.ask"
 	EventNotification     = "notification.send"
 	EventUserJoinRoom     = "user.join_room"
 	EventUserRegisterNoti = "user.register_noti"
 	EventReadNotification = "notification.read"
 )
 
-// Queue names
+const exchangeName = "linklian_events"
+
 const (
 	QueueChatEvents         = "chat_events"
+	QueueQAEvents           = "qa_events"
 	QueueNotificationEvents = "notification_events"
 	QueueUserEvents         = "user_events"
 )
-
 // queueBindings defines queue-to-routing-key-pattern bindings
 var queueBindings = map[string]string{
 	QueueChatEvents:         "chat.*",
+	QueueQAEvents:           "qa_live.#",
 	QueueNotificationEvents: "notification.*",
 	QueueUserEvents:         "user.*",
 }
 
 // EventHandler is a callback for processing consumed messages
 type EventHandler func(body []byte) error
-
 // Manager handles RabbitMQ connections and operations
 type Manager struct {
 	conn    *amqp091.Connection

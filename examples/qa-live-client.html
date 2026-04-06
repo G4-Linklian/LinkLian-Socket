@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinkLian Q&A Live Test Client (V2.0)</title>
+    <style>
+        /* [CSS ของเดิมของคุณเดียร์ สวยงามและใช้ได้เลยครับ ผมขอเพิ่มนิดหน่อยให้รองรับ UI ใหม่] */
+        :root {
+            --bg-a: #fff6ea; --bg-b: #d8f6ff; --ink: #1f2937; --muted: #6b7280;
+            --card: #ffffff; --brand: #0f766e; --brand-dark: #0b5f59; --accent: #ef4444;
+            --line: #d1d5db; --ok-bg: #dcfce7; --ok-ink: #166534; --warn-bg: #fee2e2;
+            --warn-ink: #991b1b; --shadow: 0 14px 34px rgba(15, 23, 42, 0.12);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; color: var(--ink);
+            font-family: "Segoe UI Variable Text", "Trebuchet MS", "Gill Sans", sans-serif;
+            background: radial-gradient(circle at 12% 10%, rgba(14, 116, 144, 0.22), transparent 38%),
+                        radial-gradient(circle at 90% 16%, rgba(239, 68, 68, 0.18), transparent 34%),
+                        linear-gradient(145deg, var(--bg-a), var(--bg-b));
+            min-height: 100vh; padding: 24px;
+        }
+        .shell { max-width: 1320px; margin: 0 auto; display: grid; gap: 16px; }
+        .card { background: var(--card); border: 1px solid rgba(255, 255, 255, 0.7); border-radius: 16px; box-shadow: var(--shadow); padding: 16px; }
+        .top { display: grid; gap: 12px; grid-template-columns: 1.4fr 1fr; align-items: end; }
+        h1 { margin: 0 0 6px; font-size: clamp(24px, 2.8vw, 34px); letter-spacing: 0.2px; }
+        .sub { color: var(--muted); margin: 0; font-size: 14px; }
+        .status { font-weight: 700; border-radius: 10px; padding: 8px 10px; display: inline-block; margin-top: 10px; }
+        .connected { background: var(--ok-bg); color: var(--ok-ink); }
+        .disconnected { background: var(--warn-bg); color: var(--warn-ink); }
+        .controls { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .full { grid-column: 1 / -1; }
+        label { display: block; font-size: 12px; font-weight: 700; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.8px; color: #334155; }
+        input[type="text"], input[type="number"], textarea, select { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; font-family: inherit; background: #fff; }
+        textarea { min-height: 88px; resize: vertical; }
+        .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+        button { border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; color: #fff; background: var(--brand); transition: transform 0.12s ease, background 0.2s ease; }
+        button:hover { background: var(--brand-dark); transform: translateY(-1px); }
+        button:disabled { background: #94a3b8; cursor: not-allowed; transform: none; }
+        .secondary { background: #475569; }
+        .danger { background: var(--accent); }
+        .socket-btn { background: #8b5cf6; }
+        .socket-btn:hover { background: #7c3aed; }
+        .layout { display: grid; gap: 16px; grid-template-columns: 1.45fr 1fr; }
+        .slide-box { border: 1px solid var(--line); border-radius: 14px; padding: 18px; min-height: 340px; background: linear-gradient(160deg, rgba(15, 118, 110, 0.06), rgba(255, 255, 255, 0.9)), #fff; display: grid; grid-template-rows: auto auto 1fr auto; gap: 8px; }
+        .slide-id { font-size: clamp(28px, 5vw, 56px); font-weight: 800; line-height: 1; margin: 10px 0; color: #0f172a; }
+        .pill { display: inline-block; padding: 4px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #0f172a; background: #e2e8f0; }
+        .qa-list { border: 1px solid var(--line); border-radius: 12px; max-height: 460px; overflow: auto; background: #fff; }
+        .qa-item { padding: 12px; border-bottom: 1px dashed #cbd5e1; display: grid; gap: 6px; }
+        .qa-item:last-child { border-bottom: 0; }
+        .qa-meta { font-size: 12px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
+        .qa-text { font-size: 14px; line-height: 1.45; color: #111827; }
+        .action-row { display: flex; gap: 8px; margin-top: 4px; }
+        .jump { border: 1px solid #0ea5e9; color: #0c4a6e; background: #e0f2fe; padding: 5px 8px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; }
+        .vote-btn { border: 1px solid #f59e0b; color: #b45309; background: #fef3c7; padding: 5px 8px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; }
+        .logs { border: 1px solid var(--line); border-radius: 12px; background: #0f172a; color: #e2e8f0; min-height: 220px; max-height: 350px; overflow: auto; padding: 12px; font-family: "Consolas", "Courier New", monospace; font-size: 12px; white-space: pre-wrap; }
+        .hidden { display: none; }
+        @media (max-width: 1024px) { .top, .layout { grid-template-columns: 1fr; } }
+    </style>
+</head>
+
+<body>
+    <div class="shell">
+        <section class="card top">
+            <div>
+                <h1>LinkLian Live Q&A</h1>
+                <p class="sub">Socket-Only Test Client (Go WebSocket)</p>
+                <div id="status" class="status disconnected">Disconnected</div>
+            </div>
+            <div class="controls">
+                <div>
+                    <label for="serverUrl">Go Socket URL</label>
+                    <input id="serverUrl" type="text" value="ws://localhost:4800/ws/qa">
+                </div>
+                <div>
+                    <label for="userId">User ID</label>
+                    <input id="userId" type="text" value="asker_001">
+                </div>
+                <div>
+                    <label for="qaLiveId">QA Live ID (Room)</label>
+                    <input id="qaLiveId" type="text" value="105">
+                </div>
+                <div>
+                    <label for="role">My Role</label>
+                    <select id="role">
+                        <option value="asker">Asker (Student)</option>
+                        <option value="presenter">Presenter (Teacher)</option>
+                    </select>
+                </div>
+                <div class="full btn-row">
+                    <button id="connectBtn" onclick="connectWS()">1. Connect Socket</button>
+                    <button id="joinBtn" class="secondary" onclick="joinLive()" disabled>2. Join Room</button>
+                    <button id="disconnectBtn" class="danger" onclick="disconnectWS()" disabled>Disconnect</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="layout">
+            <article class="card">
+                <h2 id="roleTitle">Student View</h2>
+                <div class="slide-box">
+                    <span class="pill" id="slideOwnerTag">Current Slide</span>
+                    <div class="slide-id">Slide <span id="slideNumber">1</span></div>
+                    <div id="slideTitle" class="sub">Waiting for presenter...</div>
+                    
+                    <div class="btn-row hidden" id="presenterControls" style="margin-top: 10px;">
+                        <button class="socket-btn" onclick="sendSlideChange(-1)">Back</button>
+                        <button class="socket-btn" onclick="sendSlideChange(1)">Next Slide</button>
+                        <button class="danger" onclick="sendEndLive()">End Live</button>
+                    </div>
+                </div>
+
+                <div style="margin-top: 12px;" id="askerPanel">
+                    <label for="questionText">Ask a Question (Sends via Socket)</label>
+                    <textarea id="questionText" placeholder="Type your question here..."></textarea>
+                    <div class="btn-row" style="margin-top: 8px;">
+                        <button class="socket-btn" onclick="sendQuestion()">Send Question</button>
+                    </div>
+                </div>
+            </article>
+
+            <article class="card">
+                <h2>Live Questions Panel</h2>
+                <p class="sub">Automatically updates via Go Socket events.</p>
+                <div id="qaList" class="qa-list"></div>
+            </article>
+        </section>
+
+        <section class="card">
+            <div class="btn-row" style="margin-bottom: 8px; justify-content: space-between;">
+                <strong>System Logs (Socket -> Go -> Frontend)</strong>
+                <button class="secondary" onclick="clearLogs()">Clear Logs</button>
+            </div>
+            <div id="logs" class="logs"></div>
+        </section>
+    </div>
+
+    <script>
+        let ws = null;
+        let connected = false;
+        let joined = false;
+        let logSeq = 0;
+
+        const state = {
+            currentSlide: 1,
+            questions: []
+        };
+
+        // ==========================================
+        // 1. UI & LOGGING SYSTEM
+        // ==========================================
+        function getNow() { return new Date().toLocaleTimeString(); }
+
+        function logBlock(title, payload, isError = false) {
+            const el = document.getElementById("logs");
+            logSeq += 1;
+            const time = getNow();
+            const color = isError ? '#ff4444' : (title.includes('IN') ? '#00e676' : '#29b6f6');
+            
+            let text = `<span style="color: ${color}">[${time}] #${logSeq} ${title}</span>\n`;
+            if (payload) {
+                text += JSON.stringify(payload, null, 2) + "\n";
+            }
+            text += "--------------------------------------------------\n";
+            
+            el.innerHTML += text;
+            el.scrollTop = el.scrollHeight;
+        }
+
+        function updateUiState() {
+            document.getElementById("connectBtn").disabled = connected;
+            document.getElementById("joinBtn").disabled = !connected || joined;
+            document.getElementById("disconnectBtn").disabled = !connected;
+            
+            const status = document.getElementById("status");
+            if (connected && joined) {
+                status.className = "status connected"; status.textContent = "Connected & Joined Room";
+            } else if (connected) {
+                status.className = "status connected"; status.textContent = "Connected (Waiting to Join)";
+            } else {
+                status.className = "status disconnected"; status.textContent = "Disconnected";
+            }
+
+            const role = document.getElementById("role").value;
+            if (role === "presenter") {
+                document.getElementById("presenterControls").classList.remove("hidden");
+                document.getElementById("askerPanel").classList.add("hidden");
+                document.getElementById("roleTitle").textContent = "Presenter View";
+            } else {
+                document.getElementById("presenterControls").classList.add("hidden");
+                document.getElementById("askerPanel").classList.remove("hidden");
+                document.getElementById("roleTitle").textContent = "Student View";
+            }
+        }
+
+        // ==========================================
+        // 2. WEBSOCKET CONNECTION (Go Server)
+        // ==========================================
+        function connectWS() {
+            const url = document.getElementById("serverUrl").value.trim();
+            ws = new WebSocket(url);
+
+            ws.onopen = () => {
+                connected = true; joined = false;
+                updateUiState();
+                logBlock("OUT: Socket Connected", { url });
+            };
+
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                logBlock(`IN: ${msg.type}`, msg.payload);
+                handleSocketEvent(msg); // แยกการประมวลผล Event
+            };
+
+            ws.onclose = () => {
+                connected = false; joined = false;
+                updateUiState();
+                logBlock("SYS: Socket Closed", null, true);
+            };
+        }
+
+        function disconnectWS() { if (ws) ws.close(); }
+
+        function sendSocketMessage(type, payload) {
+            if (!connected || !ws || ws.readyState !== WebSocket.OPEN) {
+                logBlock(`OUT BLOCKED: ${type}`, { reason: "Socket not connected" }, true);
+                return false;
+            }
+            const message = { type, payload };
+            ws.send(JSON.stringify(message));
+            logBlock(`OUT: ${type}`, payload);
+            return true;
+        }
+
+        function joinLive() {
+            const userId = document.getElementById("userId").value.trim();
+            const qaLiveId = document.getElementById("qaLiveId").value.trim();
+            
+            const sent = sendSocketMessage("JOIN_LIVE", { user_id: userId, qa_live_id: qaLiveId });
+            if (sent) {
+                joined = true;
+                updateUiState();
+            }
+        }
+
+        // ==========================================
+        // 3. SOCKET EVENT HANDLER (The Magic Happens Here)
+        // ==========================================
+        function handleSocketEvent(msg) {
+            const data = msg.payload;
+
+            switch (msg.type) {
+                case "QA_NEW_QUESTION":
+                    // มีคำถามใหม่เด้งมา เอาใส่ Array แล้ววาดหน้าจอใหม่
+                    state.questions.unshift({
+                        id: data.qa_question_id,
+                        sender: data.asker,
+                        slide: data.slide_number,
+                        text: data.question,
+                        votes: data.upvote_count || 0,
+                        time: data.created_at
+                    });
+                    renderQuestions();
+                    break;
+
+                case "QA_UPVOTED":
+                    // มีคนกดโหวต อัปเดตตัวเลขใน Array
+                    const qIdx = state.questions.findIndex(q => q.id === data.qa_question_id);
+                    if (qIdx !== -1) {
+                        state.questions[qIdx].votes = data.upvote_count;
+                        renderQuestions();
+                    }
+                    break;
+
+                case "FILE_CHANGED":
+                    // อาจารย์เปลี่ยนสไลด์ อัปเดตหน้าจอตามอาจารย์
+                    state.currentSlide = data.attachment_id || data.post_id; // สมมติใช้ postId เป็นเลขสไลด์
+                    document.getElementById("slideNumber").textContent = state.currentSlide;
+                    document.getElementById("slideTitle").textContent = "Slide synced with presenter!";
+                    break;
+                    
+                case "QA_LIVE_STARTED":
+                    alert("The Live Q&A has started!");
+                    break;
+
+                case "QA_LIVE_ENDED":
+                    alert("The presenter has ended the Live Q&A.");
+                    break;
+            }
+        }
+
+        // ==========================================
+        // 4. OUTBOUND SOCKET EVENTS
+        // ==========================================
+        function sendQuestion() {
+            const text = document.getElementById("questionText").value.trim();
+            const qaLiveId = document.getElementById("qaLiveId").value.trim();
+            const userId = document.getElementById("userId").value.trim();
+            if (!text) return;
+
+            sendSocketMessage("QA_NEW_QUESTION", {
+                qa_live_id: qaLiveId,
+                asker: userId,
+                question: text,
+                slide_number: state.currentSlide,
+                qa_question_id: `local_${Date.now()}`,
+                upvote_count: 0,
+                created_at: new Date().toISOString()
+            });
+            
+            document.getElementById("questionText").value = "";
+        }
+
+        function sendUpvote(questionId) {
+            const qaLiveId = document.getElementById("qaLiveId").value.trim();
+            const question = state.questions.find(q => q.id === questionId);
+            const nextVotes = (question?.votes || 0) + 1;
+
+            sendSocketMessage("QA_UPVOTED", {
+                qa_live_id: qaLiveId,
+                qa_question_id: questionId,
+                upvote_count: nextVotes
+            });
+        }
+
+        function sendSlideChange(delta) {
+            state.currentSlide = Math.max(1, state.currentSlide + delta);
+            const qaLiveId = document.getElementById("qaLiveId").value.trim();
+
+            sendSocketMessage("FILE_CHANGED", {
+                qa_live_id: qaLiveId,
+                post_id: state.currentSlide,
+                attachment_id: state.currentSlide
+            });
+        }
+
+        function sendEndLive() {
+            const qaLiveId = document.getElementById("qaLiveId").value.trim();
+            sendSocketMessage("QA_LIVE_ENDED", { qa_live_id: qaLiveId });
+        }
+
+        // ==========================================
+        // 5. RENDER UI
+        // ==========================================
+        function renderQuestions() {
+            const box = document.getElementById("qaList");
+            if (state.questions.length === 0) {
+                box.innerHTML = '<div class="qa-item"><div class="qa-text">No questions yet. Waiting for events...</div></div>';
+                return;
+            }
+
+            box.innerHTML = "";
+            state.questions.forEach((q) => {
+                const item = document.createElement("div");
+                item.className = "qa-item fade-in";
+
+                item.innerHTML = `
+                    <div class="qa-meta">
+                        <span>Slide ${q.slide} • <b>${q.sender}</b></span>
+                        <span>👍 ${q.votes} Votes</span>
+                    </div>
+                    <div class="qa-text">${q.text}</div>
+                    <div class="action-row">
+                        <button class="vote-btn" onclick="sendUpvote('${q.id}')">👍 Upvote</button>
+                    </div>
+                `;
+                box.appendChild(item);
+            });
+        }
+
+        function clearLogs() { document.getElementById("logs").innerHTML = ""; }
+        document.getElementById("role").addEventListener("change", updateUiState);
+
+    </script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"linklian-api/pkg/utils"
 
 	"github.com/gorilla/websocket"
+	"github.com/redis/go-redis/v9"
 )
 
 // Server represents the main server instance
@@ -24,6 +26,7 @@ type Server struct {
 	rabbitManager *rabbitmq.Manager
 	wsHandler     *handlers.WebSocketHandler
 	httpHandler   *handlers.HTTPHandler
+	redisClient   *redis.Client
 }
 
 // NewServer creates a new server instance
@@ -31,8 +34,23 @@ func NewServer() (*Server, error) {
 	// Load configuration
 	cfg := config.Load()
 
-	// Initialize WebSocket manager
-	wsManager := wsmanager.NewManager()
+	redisAddr := cfg.RedisHost + ":" + cfg.RedisPort
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     redisAddr,
+		Password: cfg.RedisPassword,
+		DB:       0,
+	})
+
+	var wsManager *wsmanager.Manager
+
+	if err := rdb.Ping(context.Background()).Err(); err != nil {
+		logger.Warn("Redis connection failed, running without cache", "NewServer", err)
+		wsManager = wsmanager.NewManager()
+	} else {
+		logger.Log("Redis connected successfully!", "NewServer")
+		wsManager = wsmanager.NewManagerWithRedis(rdb)
+	}
 
 	// Initialize RabbitMQ manager (optional)
 	var rabbitManager *rabbitmq.Manager
@@ -60,6 +78,7 @@ func NewServer() (*Server, error) {
 		rabbitManager: rabbitManager,
 		wsHandler:     wsHandler,
 		httpHandler:   httpHandler,
+		redisClient:   rdb,
 	}, nil
 }
 
@@ -73,6 +92,8 @@ func (s *Server) Start() error {
 
 	// Start consuming from chat_events queue
 	s.startChatConsumer()
+	// Start consuming from qa_events queue
+	s.startQAConsumer()
 
 	// Start server
 	logger.Log("Go WebSocket Server is running on port "+s.config.Port, "Server.Start")
@@ -100,10 +121,39 @@ func (s *Server) startChatConsumer() {
 	})
 }
 
+// startQAConsumer starts consuming from the qa_events queue
+func (s *Server) startQAConsumer() {
+	go s.rabbitManager.StartConsumer(rabbitmq.QueueQAEvents, func(body []byte) error {
+		var event models.Message
+		if err := json.Unmarshal(body, &event); err != nil {
+			logger.Error("Failed to parse message from qa_events", "startQAConsumer", err)
+			return err
+		}
+
+		switch event.Type {
+		case
+			"QA_LIVE_STARTED",
+			"QA_LIVE_ENDED",
+			"FILE_CHANGED",
+			"QA_NEW_QUESTION",
+			"QA_QUESTION_UPDATED",
+			"QA_UPVOTED":
+
+			logger.Debug("Received QA Event from queue: "+event.Type, "startQAConsumer", event)
+			s.wsHandler.HandleQAEvent(event)
+
+		default:
+			logger.Warn("Unknown event type from qa_events: "+event.Type, "startQAConsumer")
+		}
+		return nil
+	})
+}
+
 // setupRoutes sets up HTTP routes
 func (s *Server) setupRoutes() {
 	http.HandleFunc("/ws/chat", s.handleChatConnection)
 	http.HandleFunc("/ws/noti", s.handleNotiConnection)
+	http.HandleFunc("/ws/qa", s.handleQAConnection)
 	http.HandleFunc("/health", s.httpHandler.HandleHealth)
 }
 
@@ -112,6 +162,15 @@ func (s *Server) setupGracefulShutdown() {
 	utils.GracefulShutdown(func() {
 		if s.rabbitManager != nil {
 			s.rabbitManager.Close()
+		}
+
+		if s.redisClient != nil {
+			err := s.redisClient.Close()
+			if err != nil {
+				logger.Error("Failed to close Redis connection", "GracefulShutdown", err)
+			} else {
+				logger.Log("Redis connection closed successfully", "GracefulShutdown")
+			}
 		}
 	})
 }
@@ -168,6 +227,59 @@ func (s *Server) handleChatConnection(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleQAConnection handles WebSocket connections for Q&A (/ws/qa)
+func (s *Server) handleQAConnection(w http.ResponseWriter, r *http.Request) {
+	logger.Debug("Q&A WebSocket connecting", "handleQAConnection")
+
+	conn, err := s.wsManager.UpgradeConnection(w, r)
+	if err != nil {
+		logger.Error("WebSocket upgrade error", "handleQAConnection", err)
+		return
+	}
+
+	var clientInfo *models.ClientInfo
+
+	defer func() {
+		if clientInfo != nil {
+			s.wsManager.RemoveClient(clientInfo.UserID)
+		}
+		conn.Close()
+	}()
+
+	for {
+		_, messageData, err := conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNoStatusReceived) {
+				logger.Error("Q&A WebSocket unexpected close", "handleQAConnection", err)
+			} else {
+				logger.Log("Q&A WebSocket disconnected", "handleQAConnection")
+			}
+			break
+		}
+
+		var msg models.Message
+		if err := json.Unmarshal(messageData, &msg); err != nil {
+			logger.Error("JSON parse error", "handleQAConnection", err)
+			continue
+		}
+
+		switch msg.Type {
+		case "JOIN_LIVE":
+			clientInfo = s.wsHandler.HandleJoinLive(conn, msg.Payload)
+
+		case "JOIN_SECTION_ROOM":
+			s.wsHandler.HandleJoinSectionRoom(conn, msg.Payload)
+
+		case "QA_LIVE_STARTED", "QA_LIVE_ENDED", "FILE_CHANGED", "QA_NEW_QUESTION", "QA_QUESTION_UPDATED", "QA_UPVOTED":
+			logger.Debug("Received QA Event from Worker via WebSocket: "+msg.Type, "handleQAConnection", msg)
+			s.wsHandler.HandleQAEvent(msg)
+
+		default:
+			logger.Warn("Unknown Q&A message type: "+msg.Type, "handleQAConnection")
+		}
+	}
+}
+
 // handleNotiConnection handles WebSocket connections for notifications (/ws/noti)
 func (s *Server) handleNotiConnection(w http.ResponseWriter, r *http.Request) {
 	logger.Debug("Noti WebSocket connecting", "handleNotiConnection")
@@ -206,9 +318,8 @@ func (s *Server) handleNotiConnection(w http.ResponseWriter, r *http.Request) {
 
 		switch msg.Type {
 		case "REGISTER_NOTI":
-			
-		case "READ_NOTI":
 
+		case "READ_NOTI":
 		default:
 			logger.Warn("Unknown noti message type: "+msg.Type, "handleNotiConnection")
 		}
