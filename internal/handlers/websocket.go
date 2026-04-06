@@ -52,31 +52,6 @@ func (h *WebSocketHandler) HandleJoinRoom(conn *websocket.Conn, payload interfac
 	return clientInfo
 }
 
-// HandleRegisterNoti handles REGISTER_NOTI messages
-func (h *WebSocketHandler) HandleRegisterNoti(conn *websocket.Conn, payload interface{}) *models.ClientInfo {
-	payloadBytes, _ := json.Marshal(payload)
-	var notiPayload models.RegisterNotiPayload
-	if err := json.Unmarshal(payloadBytes, &notiPayload); err != nil {
-		logger.Error("Failed to parse REGISTER_NOTI payload", "HandleRegisterNoti", err)
-		return nil
-	}
-
-	clientInfo := &models.ClientInfo{
-		Socket:   conn,
-		UserID:   notiPayload.SenderId,
-		IsOnline: true,
-	}
-
-	h.wsManager.AddClient(clientInfo)
-	return clientInfo
-}
-
-// HandleReadNoti handles READ_NOTI messages
-func (h *WebSocketHandler) HandleReadNoti(clientInfo *models.ClientInfo, payload interface{}) {
-	_ = clientInfo
-	_ = payload
-}
-
 // HandleChatSend handles CHAT_SEND messages
 func (h *WebSocketHandler) HandleChatSend(clientInfo *models.ClientInfo, payload interface{}) {
 	payloadBytes, _ := json.Marshal(payload)
