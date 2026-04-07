@@ -244,7 +244,7 @@ func (s *Server) handleQAConnection(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if clientInfo != nil {
 			s.wsManager.RemoveClient(clientInfo.UserID)
-		} 
+		}
 
 		if err := conn.Close(); err != nil {
 			logger.Warn("Failed to close connection", "WebSocket", err)
@@ -274,6 +274,9 @@ func (s *Server) handleQAConnection(w http.ResponseWriter, r *http.Request) {
 
 		case "JOIN_SECTION_ROOM":
 			s.wsHandler.HandleJoinSectionRoom(conn, msg.Payload)
+
+		case "SLIDE_SYNC":
+			s.wsHandler.HandleSlideSync(conn, msg.Payload)
 
 		case "QA_LIVE_STARTED", "QA_LIVE_ENDED", "FILE_CHANGED", "QA_NEW_QUESTION", "QA_QUESTION_UPDATED", "QA_UPVOTED":
 			logger.Debug("Received QA Event from Worker via WebSocket: "+msg.Type, "handleQAConnection", msg)

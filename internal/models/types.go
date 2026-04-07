@@ -99,3 +99,9 @@ type JoinSectionPayload struct {
 	UserID    string `json:"user_id"`
 	SectionId string `json:"section_id"`
 }
+
+type SlideSyncPayload struct {
+	QALiveId    string `json:"qa_live_id"`
+	SlideNumber int    `json:"slide_number"`
+	UserID      string `json:"user_id"`
+}
