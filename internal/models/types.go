@@ -8,11 +8,13 @@ import (
 
 // ClientInfo represents a connected websocket client
 type ClientInfo struct {
-	Socket   *websocket.Conn
-	UserID   string
-	ChatId   *string
-	IsOnline bool
-	Mutex    sync.Mutex
+	Socket    *websocket.Conn
+	UserID    string
+	ChatId    *string
+	QALiveId  *string
+	SectionId *string
+	IsOnline  bool
+	Mutex     sync.Mutex
 }
 
 // Message represents websocket message structure
@@ -85,4 +87,21 @@ type HealthResponse struct {
 type SocketEvent struct {
 	Type    string                 `json:"type"`
 	Payload map[string]interface{} `json:"payload"`
+}
+
+// JoinLivePayload represents join live room payload for Q&A flow
+type JoinLivePayload struct {
+	UserID   string `json:"user_id"`
+	QALiveId string `json:"qa_live_id"`
+}
+
+type JoinSectionPayload struct {
+	UserID    string `json:"user_id"`
+	SectionId string `json:"section_id"`
+}
+
+type SlideSyncPayload struct {
+	QALiveId    string `json:"qa_live_id"`
+	SlideNumber int    `json:"slide_number"`
+	UserID      string `json:"user_id"`
 }
