@@ -9,9 +9,11 @@ import (
 	"github.com/rabbitmq/amqp091-go"
 )
 
+// exchangeName ต้องตรงกับ RABBITMQ_EXCHANGE ใน LinkLian-Core/src/worker/worker.constants.ts
 const exchangeName = "linklian_events"
 
 // RabbitMQ Event types (routing keys)
+// ต้องตรงกับ RABBITMQ_ROUTING_KEY_* ใน LinkLian-Core/src/worker/worker.constants.ts
 const (
 	EventChatMessage      = "chat.message"
 	EventNotification     = "notification.send"
@@ -20,7 +22,7 @@ const (
 	EventReadNotification = "notification.read"
 )
 
-// Queue names
+// Queue names — ต้องตรงกับ queue ที่ Core publish และ FCMConsumer consume
 const (
 	QueueChatEvents         = "chat_events"
 	QueueNotificationEvents = "notification_events"

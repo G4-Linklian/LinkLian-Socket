@@ -41,7 +41,18 @@ type JoinRoomPayload struct {
 
 // RegisterNotiPayload represents register notification payload
 type RegisterNotiPayload struct {
-	SenderId string `json:"sender_id"`
+	UserID string `json:"user_id"`
+}
+
+// NotificationDeliverPayload represents an inbound notification event from the queue
+type NotificationDeliverPayload struct {
+	ReceiveUserID string `json:"receive_user_id" mapstructure:"receive_user_id"`
+	ActorID       string `json:"actor_id"        mapstructure:"actor_id"`
+	ActorName     string `json:"actor_name"      mapstructure:"actor_name"`
+	Title         string `json:"title"           mapstructure:"title"`
+	Body          string `json:"body"            mapstructure:"body"`
+	RefID         string `json:"ref_id"          mapstructure:"ref_id"`
+	RefType       string `json:"ref_type"        mapstructure:"ref_type"`
 }
 
 // ChatSendPayload represents chat send payload
@@ -56,14 +67,17 @@ type ChatSendPayload struct {
 
 // ChatDeliverPayload represents chat deliver payload
 type ChatDeliverPayload struct {
-	MessageId string  `json:"message_id" mapstructure:"message_id"`
-	ChatId    string  `json:"chat_id" mapstructure:"chat_id"`
-	SenderId  string  `json:"sender_id" mapstructure:"sender_id"`
-	Content   string  `json:"content" mapstructure:"content"`
-	SendAt    string  `json:"send_at" mapstructure:"send_at"`
-	ReplyId   *string `json:"reply_id,omitempty" mapstructure:"reply_id"`
-	FileUrl   *string `json:"file,omitempty" mapstructure:"file"`
-	CreatedAt string  `json:"created_at" mapstructure:"created_at"`
+	MessageId      string  `json:"message_id" mapstructure:"message_id"`
+	ChatId         string  `json:"chat_id" mapstructure:"chat_id"`
+	SenderId       string  `json:"sender_id" mapstructure:"sender_id"`
+	SenderName     string  `json:"sender_name" mapstructure:"sender_name"`
+	ReceiveUserId  string  `json:"receive_user_id" mapstructure:"receive_user_id"`
+	NotificationId string  `json:"notification_id" mapstructure:"notification_id"`
+	Content        string  `json:"content" mapstructure:"content"`
+	SendAt         string  `json:"send_at" mapstructure:"send_at"`
+	ReplyId        *string `json:"reply_id,omitempty" mapstructure:"reply_id"`
+	FileUrl        *string `json:"file,omitempty" mapstructure:"file"`
+	CreatedAt      string  `json:"created_at" mapstructure:"created_at"`
 }
 
 // Event represents RabbitMQ message structure

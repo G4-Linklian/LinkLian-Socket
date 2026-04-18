@@ -74,9 +74,33 @@ func (s *Server) Start() error {
 	// Start consuming from chat_events queue
 	s.startChatConsumer()
 
+	// Start consuming from notification_events queue
+	s.startNotificationConsumer()
+
 	// Start server
 	logger.Log("Go WebSocket Server is running on port "+s.config.Port, "Server.Start")
 	return http.ListenAndServe(":"+s.config.Port, nil)
+}
+
+// startNotificationConsumer starts consuming from the notification_events queue
+func (s *Server) startNotificationConsumer() {
+	go s.rabbitManager.StartConsumer(rabbitmq.QueueNotificationEvents, func(body []byte) error {
+		var event models.Message
+		if err := json.Unmarshal(body, &event); err != nil {
+			logger.Error("Failed to parse message from notification_events", "startNotificationConsumer", err)
+			return err
+		}
+
+		switch event.Type {
+		case "NOTIFICATION":
+			logger.Debug("Received NOTIFICATION from queue", "startNotificationConsumer", event)
+			s.wsHandler.HandleNotificationDeliver(event.Payload)
+		default:
+			logger.Warn("Unknown event type from notification_events: "+event.Type, "startNotificationConsumer")
+		}
+
+		return nil
+	})
 }
 
 // startChatConsumer starts consuming from the chat_events queue
@@ -103,7 +127,7 @@ func (s *Server) startChatConsumer() {
 // setupRoutes sets up HTTP routes
 func (s *Server) setupRoutes() {
 	http.HandleFunc("/ws/chat", s.handleChatConnection)
-	http.HandleFunc("/ws/noti", s.handleNotiConnection)
+	http.HandleFunc("/ws/notification", s.handleNotiConnection)
 	http.HandleFunc("/health", s.httpHandler.HandleHealth)
 }
 
@@ -130,7 +154,7 @@ func (s *Server) handleChatConnection(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		if clientInfo != nil {
-			s.wsManager.RemoveClient(clientInfo.UserID)
+			s.wsManager.RemoveChatClient(clientInfo.UserID)
 		}
 		conn.Close()
 	}()
@@ -138,7 +162,7 @@ func (s *Server) handleChatConnection(w http.ResponseWriter, r *http.Request) {
 	for {
 		_, messageData, err := conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNoStatusReceived, websocket.CloseNormalClosure) {
 				logger.Error("Chat WebSocket unexpected close", "handleChatConnection", err)
 			} else {
 				logger.Log("Chat WebSocket closed", "handleChatConnection")
@@ -182,7 +206,7 @@ func (s *Server) handleNotiConnection(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		if clientInfo != nil {
-			s.wsManager.RemoveClient(clientInfo.UserID)
+			s.wsManager.RemoveNotiClient(clientInfo.UserID)
 		}
 		conn.Close()
 	}()
@@ -190,7 +214,7 @@ func (s *Server) handleNotiConnection(w http.ResponseWriter, r *http.Request) {
 	for {
 		_, messageData, err := conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNoStatusReceived, websocket.CloseNormalClosure) {
 				logger.Error("Noti WebSocket unexpected close", "handleNotiConnection", err)
 			} else {
 				logger.Log("Noti WebSocket closed", "handleNotiConnection")
@@ -206,7 +230,9 @@ func (s *Server) handleNotiConnection(w http.ResponseWriter, r *http.Request) {
 
 		switch msg.Type {
 		case "REGISTER_NOTI":
-			
+			clientInfo = s.wsHandler.HandleRegisterNoti(conn, msg.Payload)
+		case "NOTIFICATION":
+			s.wsHandler.HandleNotificationDeliver(msg.Payload)
 		case "READ_NOTI":
 
 		default:
