@@ -6,11 +6,19 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// ClientInfo represents a connected websocket client
+// ClientInfo represents a connected websocket client for chat rooms
 type ClientInfo struct {
 	Socket   *websocket.Conn
 	UserID   string
 	ChatId   *string
+	IsOnline bool
+	Mutex    sync.Mutex
+}
+
+// NotiClientInfo represents a connected websocket client for notification channel only
+type NotiClientInfo struct {
+	Socket   *websocket.Conn
+	UserID   string
 	IsOnline bool
 	Mutex    sync.Mutex
 }

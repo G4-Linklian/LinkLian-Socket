@@ -154,7 +154,7 @@ func (s *Server) handleChatConnection(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		if clientInfo != nil {
-			s.wsManager.RemoveChatClient(clientInfo.UserID)
+			s.wsManager.RemoveClient(clientInfo.UserID)
 		}
 		conn.Close()
 	}()
@@ -202,7 +202,7 @@ func (s *Server) handleNotiConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var clientInfo *models.ClientInfo
+	var clientInfo *models.NotiClientInfo
 
 	defer func() {
 		if clientInfo != nil {

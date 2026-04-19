@@ -13,11 +13,11 @@ import (
 )
 
 // Manager handles WebSocket connections and operations
-// chatClients  — keyed by userID, tracks users in a chat room (/ws/chat)
+// clients      — keyed by userID, tracks users in a chat room (/ws/chat)
 // notiClients  — keyed by userID, tracks users registered for notifications (/ws/notification)
 type Manager struct {
-	chatClients  map[string]*models.ClientInfo
-	notiClients  map[string]*models.ClientInfo
+	clients      map[string]*models.ClientInfo
+	notiClients  map[string]*models.NotiClientInfo
 	clientsMutex sync.RWMutex
 	upgrader     websocket.Upgrader
 }
@@ -25,8 +25,8 @@ type Manager struct {
 // NewManager creates a new WebSocket manager
 func NewManager() *Manager {
 	return &Manager{
-		chatClients: make(map[string]*models.ClientInfo),
-		notiClients: make(map[string]*models.ClientInfo),
+		clients:     make(map[string]*models.ClientInfo),
+		notiClients: make(map[string]*models.NotiClientInfo),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				return true
@@ -35,22 +35,22 @@ func NewManager() *Manager {
 	}
 }
 
-// AddChatClient registers a client in the chat room map
-func (m *Manager) AddChatClient(client *models.ClientInfo) {
+// AddClient registers a client in the chat room map
+func (m *Manager) AddClient(client *models.ClientInfo) {
 	m.clientsMutex.Lock()
 	defer m.clientsMutex.Unlock()
-	m.chatClients[client.UserID] = client
+	m.clients[client.UserID] = client
 }
 
-// RemoveChatClient removes a client from the chat room map
-func (m *Manager) RemoveChatClient(userID string) {
+// RemoveClient removes a client from the chat room map
+func (m *Manager) RemoveClient(userID string) {
 	m.clientsMutex.Lock()
 	defer m.clientsMutex.Unlock()
-	delete(m.chatClients, userID)
+	delete(m.clients, userID)
 }
 
 // AddNotiClient registers a client in the notification map
-func (m *Manager) AddNotiClient(client *models.ClientInfo) {
+func (m *Manager) AddNotiClient(client *models.NotiClientInfo) {
 	m.clientsMutex.Lock()
 	defer m.clientsMutex.Unlock()
 	m.notiClients[client.UserID] = client
@@ -64,7 +64,7 @@ func (m *Manager) RemoveNotiClient(userID string) {
 }
 
 // GetNotiClient returns the noti client for a given userID
-func (m *Manager) GetNotiClient(userID string) (*models.ClientInfo, bool) {
+func (m *Manager) GetNotiClient(userID string) (*models.NotiClientInfo, bool) {
 	m.clientsMutex.RLock()
 	defer m.clientsMutex.RUnlock()
 	client, exists := m.notiClients[userID]
@@ -75,7 +75,7 @@ func (m *Manager) GetNotiClient(userID string) (*models.ClientInfo, bool) {
 func (m *Manager) GetClientsCount() int {
 	m.clientsMutex.RLock()
 	defer m.clientsMutex.RUnlock()
-	return len(m.chatClients) + len(m.notiClients)
+	return len(m.clients) + len(m.notiClients)
 }
 
 // BroadcastToRoom broadcasts a message to all chat clients in a room
@@ -98,7 +98,7 @@ func (m *Manager) BroadcastToRoom(chatId string, senderId string, messageType st
 	defer m.clientsMutex.RUnlock()
 
 	var failed []string
-	for _, client := range m.chatClients {
+	for _, client := range m.clients {
 		if client.UserID == senderId {
 			continue
 		}
@@ -109,7 +109,7 @@ func (m *Manager) BroadcastToRoom(chatId string, senderId string, messageType st
 
 			if err != nil {
 				logger.Error("Failed to send message to client "+client.UserID, "BroadcastToRoom", err)
-				go m.RemoveChatClient(client.UserID)
+				go m.RemoveClient(client.UserID)
 				failed = append(failed, client.UserID)
 			}
 		}
@@ -132,7 +132,7 @@ func (m *Manager) SendNotificationToUser(targetUserID string, notiData interface
 
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
-		log.Printf("❌ Failed to marshal notification: %v", err)
+		log.Printf("Failed to marshal notification: %v", err)
 		return err
 	}
 
@@ -141,12 +141,12 @@ func (m *Manager) SendNotificationToUser(targetUserID string, notiData interface
 	client.Mutex.Unlock()
 
 	if err != nil {
-		log.Printf("❌ Failed to send notification to user %s: %v", targetUserID, err)
+		log.Printf("Failed to send notification to user %s: %v", targetUserID, err)
 		m.RemoveNotiClient(targetUserID)
 		return err
 	}
 
-	log.Printf("🔔 Notification sent to user %s", targetUserID)
+	log.Printf("Notification sent to user %s", targetUserID)
 	return nil
 }
 
@@ -154,7 +154,7 @@ func (m *Manager) SendNotificationToUser(targetUserID string, notiData interface
 func (m *Manager) IsInChatRoom(userID string, chatId string) bool {
 	m.clientsMutex.RLock()
 	defer m.clientsMutex.RUnlock()
-	client, exists := m.chatClients[userID]
+	client, exists := m.clients[userID]
 	return exists && client.ChatId != nil && *client.ChatId == chatId
 }
 

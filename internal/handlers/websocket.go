@@ -48,7 +48,7 @@ func (h *WebSocketHandler) HandleJoinRoom(conn *websocket.Conn, payload interfac
 		IsOnline: true,
 	}
 
-	h.wsManager.AddChatClient(clientInfo)
+	h.wsManager.AddClient(clientInfo)
 
 	return clientInfo
 }
@@ -79,7 +79,7 @@ func (h *WebSocketHandler) HandleChatSend(clientInfo *models.ClientInfo, payload
 }
 
 // HandleRegisterNoti handles REGISTER_NOTI messages — registers a client for notification delivery
-func (h *WebSocketHandler) HandleRegisterNoti(conn *websocket.Conn, payload interface{}) *models.ClientInfo {
+func (h *WebSocketHandler) HandleRegisterNoti(conn *websocket.Conn, payload interface{}) *models.NotiClientInfo {
 	payloadBytes, _ := json.Marshal(payload)
 	var p models.RegisterNotiPayload
 	if err := json.Unmarshal(payloadBytes, &p); err != nil || p.UserID == "" {
@@ -87,7 +87,7 @@ func (h *WebSocketHandler) HandleRegisterNoti(conn *websocket.Conn, payload inte
 		return nil
 	}
 
-	clientInfo := &models.ClientInfo{
+	clientInfo := &models.NotiClientInfo{
 		Socket:   conn,
 		UserID:   p.UserID,
 		IsOnline: true,
