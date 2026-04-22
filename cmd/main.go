@@ -23,8 +23,10 @@ import (
 type Server struct {
 	config        *config.Config
 	wsManager     *wsmanager.Manager
+	onlineManager *wsmanager.Manager
 	rabbitManager *rabbitmq.Manager
 	wsHandler     *handlers.WebSocketHandler
+	onlineHandler *handlers.OnlineStatusHandler
 	httpHandler   *handlers.HTTPHandler
 	redisClient   *redis.Client
 }
@@ -70,13 +72,17 @@ func NewServer() (*Server, error) {
 
 	// Initialize handlers
 	wsHandler := handlers.NewWebSocketHandler(wsManager, rabbitManager, messageRepo)
+	onlineManager := wsmanager.NewManager()
+	onlineHandler := handlers.NewOnlineStatusHandler(onlineManager)
 	httpHandler := handlers.NewHTTPHandler(wsManager)
 
 	return &Server{
 		config:        cfg,
 		wsManager:     wsManager,
+		onlineManager: onlineManager,
 		rabbitManager: rabbitManager,
 		wsHandler:     wsHandler,
+		onlineHandler: onlineHandler,
 		httpHandler:   httpHandler,
 		redisClient:   rdb,
 	}, nil
@@ -154,6 +160,7 @@ func (s *Server) setupRoutes() {
 	http.HandleFunc("/ws/chat", s.handleChatConnection)
 	http.HandleFunc("/ws/noti", s.handleNotiConnection)
 	http.HandleFunc("/ws/qa", s.handleQAConnection)
+	http.HandleFunc("/ws/online", s.handleOnlineConnection)
 	http.HandleFunc("/health", s.httpHandler.HandleHealth)
 }
 
@@ -216,6 +223,7 @@ func (s *Server) handleChatConnection(w http.ResponseWriter, r *http.Request) {
 		switch msg.Type {
 		case "JOIN_ROOM":
 			clientInfo = s.wsHandler.HandleJoinRoom(conn, msg.Payload)
+
 		case "CHAT_SEND":
 			if clientInfo != nil {
 				s.wsHandler.HandleChatSend(clientInfo, msg.Payload)
@@ -225,6 +233,68 @@ func (s *Server) handleChatConnection(w http.ResponseWriter, r *http.Request) {
 			s.wsHandler.HandleChatDeliver(msg.Payload)
 		default:
 			logger.Warn("Unknown chat message type: "+msg.Type, "handleChatConnection")
+		}
+	}
+}
+
+// handleOnlineConnection handles standalone online status WebSocket connections (/ws/online)
+func (s *Server) handleOnlineConnection(w http.ResponseWriter, r *http.Request) {
+	logger.Debug("Online Status WebSocket connecting", "handleOnlineConnection")
+
+	conn, err := s.onlineManager.UpgradeConnection(w, r)
+	if err != nil {
+		logger.Error("WebSocket upgrade error", "handleOnlineConnection", err)
+		return
+	}
+
+	var clientInfo *models.ClientInfo
+
+	defer func() {
+		if clientInfo != nil {
+			disconnectedUserID := clientInfo.UserID
+			s.onlineManager.RemoveClient(disconnectedUserID)
+			s.onlineManager.BroadcastOnlinePresenceChanged(disconnectedUserID, false)
+		}
+
+		if err := conn.Close(); err != nil {
+			logger.Warn("Failed to close online socket connection", "handleOnlineConnection", err)
+		}
+	}()
+
+	for {
+		_, messageData, err := conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNoStatusReceived) {
+				logger.Error("Online WebSocket unexpected close", "handleOnlineConnection", err)
+			} else {
+				logger.Log("Online WebSocket disconnected", "handleOnlineConnection")
+			}
+			break
+		}
+
+		var msg models.Message
+		if err := json.Unmarshal(messageData, &msg); err != nil {
+			logger.Error("JSON parse error", "handleOnlineConnection", err)
+			continue
+		}
+
+		switch msg.Type {
+		case "JOIN_ONLINE":
+			logger.Debug("Received JOIN_ONLINE message", "handleOnlineConnection", msg)
+			clientInfo = s.onlineHandler.HandleJoinOnline(conn, msg.Payload)
+
+		case "LEAVE_ONLINE":
+			s.onlineHandler.HandleLeaveOnline(clientInfo, msg.Payload)
+			clientInfo = nil
+
+		case "ONLINE_SUBSCRIBE":
+			s.onlineHandler.HandleOnlineSubscribe(clientInfo, msg.Payload)
+
+		case "ONLINE_STATUS_CHECK":
+			s.onlineHandler.HandleOnlineStatusCheck(clientInfo, msg.Payload)
+
+		default:
+			logger.Warn("Unknown online message type: "+msg.Type, "handleOnlineConnection")
 		}
 	}
 }

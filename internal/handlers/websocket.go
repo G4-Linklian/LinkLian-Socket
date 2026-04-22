@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -50,6 +51,56 @@ func (h *WebSocketHandler) HandleJoinRoom(conn *websocket.Conn, payload interfac
 	h.wsManager.AddClient(clientInfo)
 
 	return clientInfo
+}
+
+// HandleOnlineStatusCheck handles ONLINE_STATUS_CHECK messages
+func (h *WebSocketHandler) HandleOnlineStatusCheck(clientInfo *models.ClientInfo, payload interface{}) {
+	if clientInfo == nil {
+		logger.Warn("ONLINE_STATUS_CHECK ignored because client is not joined", "HandleOnlineStatusCheck")
+		return
+	}
+
+	payloadBytes, _ := json.Marshal(payload)
+	var checkPayload models.OnlineStatusCheckPayload
+	if err := json.Unmarshal(payloadBytes, &checkPayload); err != nil {
+		logger.Error("Failed to parse ONLINE_STATUS_CHECK payload", "HandleOnlineStatusCheck", err)
+		return
+	}
+
+	chatId := strings.TrimSpace(checkPayload.ChatId)
+	if chatId == "" && clientInfo.ChatId != nil {
+		chatId = *clientInfo.ChatId
+	}
+
+	if chatId == "" {
+		logger.Warn("ONLINE_STATUS_CHECK missing chat_id", "HandleOnlineStatusCheck", checkPayload)
+		return
+	}
+
+	onlineUserIDs := h.wsManager.GetOnlineUserIDsByChat(chatId)
+	onlineSet := make(map[string]bool, len(onlineUserIDs))
+	for _, userID := range onlineUserIDs {
+		onlineSet[userID] = true
+	}
+
+	statuses := make(map[string]bool, len(checkPayload.UserSysIDs))
+	for _, userSysID := range checkPayload.UserSysIDs {
+		trimmed := strings.TrimSpace(userSysID)
+		if trimmed == "" {
+			continue
+		}
+		statuses[trimmed] = onlineSet[trimmed]
+	}
+
+	result := models.OnlineStatusResultPayload{
+		ChatId:           chatId,
+		Statuses:         statuses,
+		OnlineUserSysIDs: onlineUserIDs,
+	}
+
+	if err := h.wsManager.SendOnlineStatusResult(clientInfo.UserID, result); err != nil {
+		logger.Error("Failed to send ONLINE_STATUS_RESULT", "HandleOnlineStatusCheck", err)
+	}
 }
 
 // HandleChatSend handles CHAT_SEND messages

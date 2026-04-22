@@ -1,17 +1,19 @@
 package websocket
 
 import (
-	"encoding/json"
-	"net/http"
-	"sync"
-	"fmt"
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"sort"
+	"strings"
+	"sync"
 
 	"github.com/gorilla/websocket"
+	"github.com/redis/go-redis/v9"
 
 	"linklian-api/internal/models"
 	"linklian-api/pkg/logger"
-	"github.com/redis/go-redis/v9"
 )
 
 // Manager handles WebSocket connections and operations
@@ -36,8 +38,8 @@ func NewManager() *Manager {
 }
 
 func NewManagerWithRedis(rdb *redis.Client) *Manager {
-	m := NewManager() 
-	m.redisClient = rdb 
+	m := NewManager()
+	m.redisClient = rdb
 	return m
 }
 
@@ -67,8 +69,8 @@ func (m *Manager) RemoveClient(userID string) {
 	if exists {
 		delete(m.clients, userID)
 	}
-	
-	m.clientsMutex.Unlock() 
+
+	m.clientsMutex.Unlock()
 
 	if lastLiveId != nil {
 		go m.handleLeaveLiveState(*lastLiveId)
@@ -126,6 +128,121 @@ func (m *Manager) BroadcastToRoom(chatId string, senderId string, messageType st
 	}
 }
 
+// GetOnlineUserIDsByChat returns sorted online user IDs in a chat room.
+func (m *Manager) GetOnlineUserIDsByChat(chatId string) []string {
+	m.clientsMutex.RLock()
+	defer m.clientsMutex.RUnlock()
+
+	userIDs := make([]string, 0)
+	for _, client := range m.clients {
+		if client.ChatId != nil && *client.ChatId == chatId && client.IsOnline {
+			userIDs = append(userIDs, client.UserID)
+		}
+	}
+
+	sort.Strings(userIDs)
+	return userIDs
+}
+
+// BroadcastOnlineUsers broadcasts the current online user list to all users in the given chat room.
+func (m *Manager) BroadcastOnlineUsers(chatId string) {
+	payload := models.OnlineUsersPayload{
+		ChatId:           chatId,
+		OnlineUserSysIDs: m.GetOnlineUserIDsByChat(chatId),
+	}
+
+	m.BroadcastToRoom(chatId, "", "ONLINE_USERS", payload)
+}
+
+// GetAllOnlineUserIDs returns all online user IDs in this manager.
+func (m *Manager) GetAllOnlineUserIDs() []string {
+	m.clientsMutex.RLock()
+	defer m.clientsMutex.RUnlock()
+
+	userIDs := make([]string, 0)
+	for _, client := range m.clients {
+		if client.IsOnline {
+			userIDs = append(userIDs, client.UserID)
+		}
+	}
+
+	sort.Strings(userIDs)
+	return userIDs
+}
+
+// BroadcastToAllOnline broadcasts a message to all online clients in this manager.
+func (m *Manager) BroadcastToAllOnline(messageType string, data interface{}) {
+	response := map[string]interface{}{
+		"type":    messageType,
+		"payload": data,
+	}
+
+	responseBytes, err := json.Marshal(response)
+	if err != nil {
+		logger.Error("Failed to marshal global broadcast message", "BroadcastToAllOnline", err)
+		return
+	}
+
+	m.clientsMutex.RLock()
+	defer m.clientsMutex.RUnlock()
+
+	for _, client := range m.clients {
+		if !client.IsOnline {
+			continue
+		}
+
+		client.Mutex.Lock()
+		err := client.Socket.WriteMessage(websocket.TextMessage, responseBytes)
+		client.Mutex.Unlock()
+
+		if err != nil {
+			logger.Error("Failed to send global message to client "+client.UserID, "BroadcastToAllOnline", err)
+			go m.RemoveClient(client.UserID)
+		}
+	}
+}
+
+// BroadcastAllOnlineUsers broadcasts all online user IDs to all clients in this manager.
+func (m *Manager) BroadcastAllOnlineUsers() {
+	payload := map[string]interface{}{
+		"online_user_sys_ids": m.GetAllOnlineUserIDs(),
+	}
+
+	m.BroadcastToAllOnline("ONLINE_USERS", payload)
+}
+
+// SendOnlineStatusResult sends online status check result back to a specific user.
+func (m *Manager) SendOnlineStatusResult(targetUserID string, payload models.OnlineStatusResultPayload) error {
+	client, exists := m.GetClient(targetUserID)
+
+	if !exists || !client.IsOnline {
+		return ErrUserOffline
+	}
+
+	response := map[string]interface{}{
+		"type":    "ONLINE_STATUS_RESULT",
+		"payload": payload,
+	}
+
+	responseBytes, err := json.Marshal(response)
+	if err != nil {
+		logger.Error("Failed to marshal online status result", "SendOnlineStatusResult", err)
+		return err
+	}
+
+	client.Mutex.Lock()
+	err = client.Socket.WriteMessage(websocket.TextMessage, responseBytes)
+	client.Mutex.Unlock()
+
+	if err != nil {
+		logger.Error("Failed to send online status result to user "+targetUserID, "SendOnlineStatusResult", err)
+		m.RemoveClient(targetUserID)
+		return err
+	}
+
+	return nil
+}
+
 // BroadcastToLiveRoom broadcasts a message to all clients in a Q&A live room.
 func (m *Manager) BroadcastToLiveRoom(qaLiveId string, senderId string, messageType string, data interface{}) {
 	response := map[string]interface{}{
@@ -143,25 +260,25 @@ func (m *Manager) BroadcastToLiveRoom(qaLiveId string, senderId string, messageT
 	defer m.clientsMutex.RUnlock()
 
 	for _, client := range m.clients {
-        if client.UserID == senderId {
-            continue
-        }
+		if client.UserID == senderId {
+			continue
+		}
 
-        isMatchLive := client.QALiveId != nil && *client.QALiveId == qaLiveId
-        
-        isMatchSection := client.SectionId != nil && ("section_"+*client.SectionId) == qaLiveId
+		isMatchLive := client.QALiveId != nil && *client.QALiveId == qaLiveId
 
-        if (isMatchLive || isMatchSection) && client.IsOnline {
-            client.Mutex.Lock()
-            err := client.Socket.WriteMessage(websocket.TextMessage, responseBytes)
-            client.Mutex.Unlock()
+		isMatchSection := client.SectionId != nil && ("section_"+*client.SectionId) == qaLiveId
 
-            if err != nil {
-                logger.Error("Failed to send live message to client "+client.UserID, "BroadcastToLiveRoom", err)
-                go m.RemoveClient(client.UserID)
-            }
-        }
-    }
+		if (isMatchLive || isMatchSection) && client.IsOnline {
+			client.Mutex.Lock()
+			err := client.Socket.WriteMessage(websocket.TextMessage, responseBytes)
+			client.Mutex.Unlock()
+
+			if err != nil {
+				logger.Error("Failed to send live message to client "+client.UserID, "BroadcastToLiveRoom", err)
+				go m.RemoveClient(client.UserID)
+			}
+		}
+	}
 }
 
 // SendNotificationToUser sends a notification to a specific user
@@ -214,13 +331,13 @@ func (m *Manager) handleJoinLiveState(qaLiveId string, client *models.ClientInfo
 
 	stateKey := fmt.Sprintf("qa_live:%s:active_slide", qaLiveId)
 	stateStr, err := m.redisClient.Get(ctx, stateKey).Result()
-	
+
 	if err == nil && stateStr != "" {
 		var state map[string]interface{}
-		
+
 		if unmarshalErr := json.Unmarshal([]byte(stateStr), &state); unmarshalErr != nil {
 			logger.Warn("Failed to unmarshal live state", "WebSocket", unmarshalErr)
-			return 
+			return
 		}
 
 		msgBytes, marshalErr := json.Marshal(map[string]interface{}{
@@ -229,7 +346,7 @@ func (m *Manager) handleJoinLiveState(qaLiveId string, client *models.ClientInfo
 		})
 		if marshalErr != nil {
 			logger.Warn("Failed to marshal LIVE_CURRENT_STATE message", "WebSocket", marshalErr)
-			return 
+			return
 		}
 
 		client.Mutex.Lock()
@@ -247,7 +364,7 @@ func (m *Manager) handleLeaveLiveState(qaLiveId string) {
 
 	countKey := fmt.Sprintf("live:room:%s:viewers", qaLiveId)
 	count, err := m.redisClient.Decr(ctx, countKey).Result()
-	
+
 	if err == nil {
 		if count < 0 {
 			m.redisClient.Set(ctx, countKey, 0, 0)
@@ -255,4 +372,137 @@ func (m *Manager) handleLeaveLiveState(qaLiveId string) {
 		}
 		m.BroadcastToLiveRoom(qaLiveId, "", "VIEWER_COUNT_UPDATED", map[string]interface{}{"count": count})
 	}
+}
+
+// SetOnlineSubscriptions replaces the subscriber watch-list and returns current status snapshot.
+func (m *Manager) SetOnlineSubscriptions(subscriberUserID string, userSysIDs []string) (models.OnlineSubscriptionResultPayload, error) {
+	m.clientsMutex.Lock()
+	defer m.clientsMutex.Unlock()
+
+	client, exists := m.clients[subscriberUserID]
+	if !exists || !client.IsOnline {
+		return models.OnlineSubscriptionResultPayload{}, ErrUserOffline
+	}
+
+	watchSet := make(map[string]struct{}, len(userSysIDs))
+	for _, rawID := range userSysIDs {
+		trimmed := strings.TrimSpace(rawID)
+		if trimmed == "" {
+			continue
+		}
+		watchSet[trimmed] = struct{}{}
+	}
+
+	client.OnlineWatchUserIDs = watchSet
+
+	onlineUserIDs := m.getAllOnlineUserIDsLocked()
+	onlineSet := make(map[string]bool, len(onlineUserIDs))
+	for _, userID := range onlineUserIDs {
+		onlineSet[userID] = true
+	}
+
+	subscribedUserIDs := make([]string, 0, len(watchSet))
+	statuses := make(map[string]bool, len(watchSet))
+	for userID := range watchSet {
+		subscribedUserIDs = append(subscribedUserIDs, userID)
+		statuses[userID] = onlineSet[userID]
+	}
+
+	sort.Strings(subscribedUserIDs)
+
+	return models.OnlineSubscriptionResultPayload{
+		SubscribedUserSysIDs: subscribedUserIDs,
+		Statuses:             statuses,
+		OnlineUserSysIDs:     onlineUserIDs,
+	}, nil
+}
+
+// SendOnlineSubscriptionResult sends ONLINE_SUBSCRIPTION_RESULT to one subscriber.
+func (m *Manager) SendOnlineSubscriptionResult(targetUserID string, payload models.OnlineSubscriptionResultPayload) error {
+	response := map[string]interface{}{
+		"type":    "ONLINE_SUBSCRIPTION_RESULT",
+		"payload": payload,
+	}
+
+	return m.sendOnlineMessageToUser(targetUserID, response)
+}
+
+// BroadcastOnlinePresenceChanged notifies subscribers that a specific user's presence has changed.
+func (m *Manager) BroadcastOnlinePresenceChanged(changedUserID string, isOnline bool) {
+	payload := models.OnlinePresenceChangedPayload{
+		UserSysID: changedUserID,
+		IsOnline:  isOnline,
+	}
+
+	response := map[string]interface{}{
+		"type":    "ONLINE_PRESENCE_CHANGED",
+		"payload": payload,
+	}
+
+	responseBytes, err := json.Marshal(response)
+	if err != nil {
+		logger.Error("Failed to marshal online presence changed message", "BroadcastOnlinePresenceChanged", err)
+		return
+	}
+
+	m.clientsMutex.RLock()
+	defer m.clientsMutex.RUnlock()
+
+	for _, client := range m.clients {
+		if !client.IsOnline {
+			continue
+		}
+
+		if len(client.OnlineWatchUserIDs) == 0 {
+			continue
+		}
+
+		if _, shouldNotify := client.OnlineWatchUserIDs[changedUserID]; !shouldNotify {
+			continue
+		}
+
+		client.Mutex.Lock()
+		err := client.Socket.WriteMessage(websocket.TextMessage, responseBytes)
+		client.Mutex.Unlock()
+
+		if err != nil {
+			logger.Error("Failed to send online presence changed to client "+client.UserID, "BroadcastOnlinePresenceChanged", err)
+			go m.RemoveClient(client.UserID)
+		}
+	}
+}
+
+func (m *Manager) sendOnlineMessageToUser(targetUserID string, response map[string]interface{}) error {
+	client, exists := m.GetClient(targetUserID)
+	if !exists || !client.IsOnline {
+		return ErrUserOffline
+	}
+
+	responseBytes, err := json.Marshal(response)
+	if err != nil {
+		return err
+	}
+
+	client.Mutex.Lock()
+	err = client.Socket.WriteMessage(websocket.TextMessage, responseBytes)
+	client.Mutex.Unlock()
+
+	if err != nil {
+		m.RemoveClient(targetUserID)
+		return err
+	}
+
+	return nil
+}
+
+func (m *Manager) getAllOnlineUserIDsLocked() []string {
+	userIDs := make([]string, 0)
+	for _, client := range m.clients {
+		if client.IsOnline {
+			userIDs = append(userIDs, client.UserID)
+		}
+	}
+
+	sort.Strings(userIDs)
+	return userIDs
 }
