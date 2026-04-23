@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -78,42 +77,6 @@ func (h *WebSocketHandler) HandleChatSend(clientInfo *models.ClientInfo, payload
 
 }
 
-// HandleRegisterNoti handles REGISTER_NOTI messages — registers a client for notification delivery
-func (h *WebSocketHandler) HandleRegisterNoti(conn *websocket.Conn, payload interface{}) *models.NotiClientInfo {
-	payloadBytes, _ := json.Marshal(payload)
-	var p models.RegisterNotiPayload
-	if err := json.Unmarshal(payloadBytes, &p); err != nil || p.UserID == "" {
-		logger.Error("Failed to parse REGISTER_NOTI payload", "HandleRegisterNoti", err)
-		return nil
-	}
-
-	clientInfo := &models.NotiClientInfo{
-		Socket:   conn,
-		UserID:   p.UserID,
-		IsOnline: true,
-	}
-
-	h.wsManager.AddNotiClient(clientInfo)
-	logger.Log("Client registered for notifications: "+p.UserID, "HandleRegisterNoti")
-	return clientInfo
-}
-
-// HandleNotificationDeliver delivers a NOTIFICATION event from the queue to the target user
-func (h *WebSocketHandler) HandleNotificationDeliver(payload interface{}) {
-	payloadBytes, _ := json.Marshal(payload)
-	var p models.NotificationDeliverPayload
-	if err := json.Unmarshal(payloadBytes, &p); err != nil {
-		logger.Error("Failed to parse NOTIFICATION payload", "HandleNotificationDeliver", err)
-		return
-	}
-
-	// Send the original payload (not the parsed struct) so extra fields like
-	// section_id and community_id are preserved and forwarded to the Flutter client.
-	if err := h.wsManager.SendNotificationToUser(p.ReceiveUserID, payload); err != nil {
-		logger.Log("User offline, notification not delivered: "+p.ReceiveUserID, "HandleNotificationDeliver")
-	}
-}
-
 // HandleChatDeliver handle chat deliver event
 func (h *WebSocketHandler) HandleChatDeliver(payload interface{}) {
 	var p models.ChatDeliverPayload
@@ -132,31 +95,135 @@ func (h *WebSocketHandler) HandleChatDeliver(payload interface{}) {
 		p,
 	)
 
-	if p.ReceiveUserId == "" {
+	// delegate notification logic to notification.go
+	h.sendChatNotification(p, failedClients)
+}
+
+func (h *WebSocketHandler) HandleJoinSectionRoom(conn *websocket.Conn, payload interface{}) *models.ClientInfo {
+	payloadBytes, _ := json.Marshal(payload)
+	var joinPayload models.JoinSectionPayload
+
+	if err := json.Unmarshal(payloadBytes, &joinPayload); err != nil {
+		logger.Error("Failed to parse JOIN_SECTION_ROOM payload", "HandleJoinSectionRoom", err)
+		return nil
+	}
+
+	if joinPayload.UserID == "" || joinPayload.SectionId == "" {
+		logger.Warn("Invalid JOIN_SECTION_ROOM payload", "HandleJoinSectionRoom", joinPayload)
+		return nil
+	}
+
+	clientInfo := &models.ClientInfo{
+		Socket:    conn,
+		UserID:    joinPayload.UserID,
+		SectionId: &joinPayload.SectionId,
+		IsOnline:  true,
+	}
+
+	h.wsManager.AddClient(clientInfo)
+
+	logger.Log("User "+joinPayload.UserID+" joined Section Room: "+joinPayload.SectionId, "HandleJoinSectionRoom")
+
+	return clientInfo
+}
+
+func (h *WebSocketHandler) HandleJoinLive(conn *websocket.Conn, payload interface{}) *models.ClientInfo {
+	payloadBytes, _ := json.Marshal(payload)
+	var joinPayload models.JoinLivePayload
+	if err := json.Unmarshal(payloadBytes, &joinPayload); err != nil {
+		logger.Error("Failed to parse JOIN_LIVE payload", "HandleJoinLive", err)
+		return nil
+	}
+
+	if joinPayload.UserID == "" || joinPayload.QALiveId == "" {
+		logger.Warn("Invalid JOIN_LIVE payload", "HandleJoinLive", joinPayload)
+		return nil
+	}
+
+	clientInfo := &models.ClientInfo{
+		Socket:   conn,
+		UserID:   joinPayload.UserID,
+		QALiveId: &joinPayload.QALiveId,
+		IsOnline: true,
+	}
+
+	h.wsManager.AddClient(clientInfo)
+	return clientInfo
+}
+
+func (h *WebSocketHandler) HandleSlideSync(conn *websocket.Conn, payload interface{}) {
+	payloadBytes, err := json.Marshal(payload)
+	var syncPayload models.SlideSyncPayload
+	if err != nil {
+		logger.Error("Failed to marshal SLIDE_SYNC payload", "HandleSlideSync", err)
 		return
 	}
 
-	// Determine whether receiver needs a notification:
-	// 1. Not in the room at all, OR
-	// 2. Was in the room but their connection was stale (BroadcastToRoom failed for them)
-	inRoom := h.wsManager.IsInChatRoom(p.ReceiveUserId, p.ChatId)
-	stale := slices.Contains(failedClients, p.ReceiveUserId)
-	logger.Debug("IsInChatRoom result for user "+p.ReceiveUserId+" in chat "+p.ChatId+": "+fmt.Sprintf("%v", inRoom)+" stale: "+fmt.Sprintf("%v", stale), "HandleChatDeliver")
-
-	if !inRoom || stale {
-		notiPayload := map[string]interface{}{
-			"notification_id": p.NotificationId,
-			"feature":         "chat",
-			"actor_id":        p.SenderId,
-			"actor_name":      p.SenderName,
-			"body":            p.Content,
-			"ref_id":          p.ChatId,
-			"ref_type":        "chat",
-		}
-		if err := h.wsManager.SendNotificationToUser(p.ReceiveUserId, notiPayload); err != nil {
-			logger.Log("Receiver not on noti channel, skipping notification: "+p.ReceiveUserId, "HandleChatDeliver")
-		} else {
-			logger.Log("Sent chat notification to stale/offline receiver: "+p.ReceiveUserId, "HandleChatDeliver")
-		}
+	if err := json.Unmarshal(payloadBytes, &syncPayload); err != nil {
+		logger.Error("Failed to parse SLIDE_SYNC payload", "HandleSlideSync", err)
+		return
 	}
+
+	if syncPayload.QALiveId == "" {
+		logger.Warn("Invalid SLIDE_SYNC payload: missing qa_live_id", "HandleSlideSync", syncPayload)
+		return
+	}
+
+	logger.Log("Received SLIDE_SYNC for Live "+syncPayload.QALiveId+" from user "+syncPayload.UserID, "HandleSlideSync")
+
+	h.wsManager.BroadcastToLiveRoom(
+		syncPayload.QALiveId,
+		syncPayload.UserID,
+		"SLIDE_SYNC",
+		payload,
+	)
+}
+
+func (h *WebSocketHandler) HandleQAEvent(msg models.Message) {
+	var p struct {
+		QALiveId interface{} `mapstructure:"qa_live_id"`
+	}
+
+	if err := mapstructure.WeakDecode(msg.Payload, &p); err != nil {
+		logger.Error("Failed to decode QA event payload", "HandleQAEvent", err)
+		return
+	}
+
+	qaLiveId := fmt.Sprintf("%v", p.QALiveId)
+
+	if qaLiveId == "" || qaLiveId == "<nil>" {
+		logger.Warn("Missing qa_live_id in QA event", "HandleQAEvent", msg)
+		return
+	}
+
+	if msg.Type == "QA_LIVE_STARTED" {
+		var p struct {
+			SectionId interface{} `mapstructure:"section_id"`
+		}
+		if err := mapstructure.WeakDecode(msg.Payload, &p); err != nil {
+			logger.Warn("Failed to decode QA_LIVE_STARTED payload", "HandleQAEvent", err)
+			return
+		}
+
+		sectionRoom := fmt.Sprintf("section_%v", p.SectionId)
+
+		logger.Log("Broadcasting QA_LIVE_STARTED to Section Room: "+sectionRoom, "HandleQAEvent")
+
+		h.wsManager.BroadcastToLiveRoom(
+			sectionRoom,
+			"",
+			msg.Type,
+			msg.Payload,
+		)
+		return
+	}
+
+	logger.Log("Broadcasting "+msg.Type+" to Live Room: "+qaLiveId, "HandleQAEvent")
+
+	h.wsManager.BroadcastToLiveRoom(
+		qaLiveId,
+		"",
+		msg.Type,
+		msg.Payload,
+	)
 }

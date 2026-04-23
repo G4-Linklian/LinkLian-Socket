@@ -150,6 +150,45 @@ func (m *Manager) SendNotificationToUser(targetUserID string, notiData interface
 	return nil
 }
 
+// BroadcastToLiveRoom broadcasts a message to all clients in a live or section room.
+// roomId can be a QA live ID or "section_<sectionId>" format.
+// Pass excludeUserID = "" to broadcast to everyone in the room.
+func (m *Manager) BroadcastToLiveRoom(roomId string, excludeUserID string, messageType string, data interface{}) {
+	response := map[string]interface{}{
+		"type":    messageType,
+		"payload": data,
+	}
+
+	responseBytes, err := json.Marshal(response)
+	if err != nil {
+		logger.Error("Failed to marshal live room broadcast message", "BroadcastToLiveRoom", err)
+		return
+	}
+
+	m.clientsMutex.RLock()
+	defer m.clientsMutex.RUnlock()
+
+	for _, client := range m.clients {
+		if excludeUserID != "" && client.UserID == excludeUserID {
+			continue
+		}
+
+		inRoom := (client.QALiveId != nil && *client.QALiveId == roomId) ||
+			(client.SectionId != nil && "section_"+*client.SectionId == roomId)
+
+		if inRoom && client.IsOnline {
+			client.Mutex.Lock()
+			err := client.Socket.WriteMessage(websocket.TextMessage, responseBytes)
+			client.Mutex.Unlock()
+
+			if err != nil {
+				logger.Error("Failed to send live room message to client "+client.UserID, "BroadcastToLiveRoom", err)
+				go m.RemoveClient(client.UserID)
+			}
+		}
+	}
+}
+
 // IsInChatRoom returns true if the user currently has an active chat connection
 func (m *Manager) IsInChatRoom(userID string, chatId string) bool {
 	m.clientsMutex.RLock()

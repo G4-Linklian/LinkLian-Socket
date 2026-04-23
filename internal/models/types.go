@@ -6,13 +6,15 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// ClientInfo represents a connected websocket client for chat rooms
+// ClientInfo represents a connected websocket client for chat rooms, section rooms, and live rooms
 type ClientInfo struct {
-	Socket   *websocket.Conn
-	UserID   string
-	ChatId   *string
-	IsOnline bool
-	Mutex    sync.Mutex
+	Socket    *websocket.Conn
+	UserID    string
+	ChatId    *string
+	SectionId *string
+	QALiveId  *string
+	IsOnline  bool
+	Mutex     sync.Mutex
 }
 
 // NotiClientInfo represents a connected websocket client for notification channel only
@@ -45,6 +47,25 @@ type ChatMessage struct {
 type JoinRoomPayload struct {
 	UserID string `json:"user_id"`
 	ChatId string `json:"chat_id"`
+}
+
+// JoinSectionPayload represents join section room message payload
+type JoinSectionPayload struct {
+	UserID    string `json:"user_id"`
+	SectionId string `json:"section_id"`
+}
+
+// JoinLivePayload represents join QA live room message payload
+type JoinLivePayload struct {
+	UserID   string `json:"user_id"`
+	QALiveId string `json:"qa_live_id"`
+}
+
+// SlideSyncPayload represents slide sync message payload
+type SlideSyncPayload struct {
+	UserID   string `json:"user_id"`
+	QALiveId string `json:"qa_live_id"`
+	Slide    int    `json:"slide"`
 }
 
 // RegisterNotiPayload represents register notification payload
