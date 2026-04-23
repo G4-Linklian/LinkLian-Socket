@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinkLian Online Status Client</title>
+    <style>
+        :root {
+            --bg: #f4f7fb;
+            --card: #ffffff;
+            --line: #d6deea;
+            --text: #18222f;
+            --muted: #5f6d82;
+            --ok-bg: #dbf5e5;
+            --ok-text: #0f6b34;
+            --bad-bg: #fde3e6;
+            --bad-text: #9d2136;
+            --brand: #0b6bcb;
+            --brand-hover: #0a5aaa;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 24px;
+            font-family: Segoe UI, Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #eef4ff, #f9fbff);
+            color: var(--text);
+        }
+
+        .wrap {
+            max-width: 1150px;
+            margin: 0 auto;
+            display: grid;
+            gap: 16px;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 10px 20px rgba(11, 107, 203, 0.08);
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            font-size: 28px;
+        }
+
+        .sub {
+            margin: 0;
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .status {
+            margin-top: 10px;
+            display: inline-block;
+            padding: 8px 10px;
+            border-radius: 8px;
+            font-weight: 700;
+        }
+
+        .connected { background: var(--ok-bg); color: var(--ok-text); }
+        .disconnected { background: var(--bad-bg); color: var(--bad-text); }
+
+        .grid {
+            display: grid;
+            gap: 16px;
+            grid-template-columns: 1.1fr 1fr;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            color: #243a5a;
+        }
+
+        input[type="text"], textarea {
+            width: 100%;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 14px;
+        }
+
+        textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        .btn-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        button {
+            border: 0;
+            border-radius: 8px;
+            background: var(--brand);
+            color: white;
+            font-weight: 700;
+            padding: 10px 12px;
+            cursor: pointer;
+        }
+
+        button:hover { background: var(--brand-hover); }
+        button:disabled { background: #9fb6d1; cursor: not-allowed; }
+
+        .secondary { background: #6a778c; }
+        .secondary:hover { background: #5a6679; }
+
+        .online-panel {
+            border: 1px solid #c7daf6;
+            background: #f3f8ff;
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        .muted {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .status-item {
+            border: 1px solid #d4e1f3;
+            border-radius: 8px;
+            padding: 8px;
+            background: #ffffff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pill {
+            display: inline-block;
+            border-radius: 999px;
+            padding: 2px 8px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .pill.online {
+            background: var(--ok-bg);
+            color: var(--ok-text);
+        }
+
+        .pill.offline {
+            background: var(--bad-bg);
+            color: var(--bad-text);
+        }
+
+        .timeline {
+            margin: 8px 0 0;
+            padding-left: 18px;
+            max-height: 170px;
+            overflow: auto;
+        }
+
+        .timeline li {
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+
+        .small-label {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 2px;
+        }
+
+        .result-list {
+            margin: 8px 0 0;
+            padding-left: 20px;
+        }
+
+        .log {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #0e1a2a;
+            color: #dce7f9;
+            min-height: 350px;
+            max-height: 480px;
+            overflow: auto;
+            font-family: Consolas, monospace;
+            font-size: 12px;
+            padding: 10px;
+            white-space: pre-wrap;
+        }
+
+        @media (max-width: 980px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <section class="card">
+            <h1>LinkLian Online Status Socket Client</h1>
+            <p class="sub">Standalone online presence flow (separate from chat)</p>
+            <div id="status" class="status disconnected">Disconnected</div>
+        </section>
+
+        <section class="grid">
+            <article class="card">
+                <div class="form-group">
+                    <label for="serverUrl">Socket URL</label>
+                    <input id="serverUrl" type="text" value="ws://localhost:4800/ws/online">
+                </div>
+
+                <div class="btn-row">
+                    <button id="connectBtn" onclick="connectSocket()">Connect</button>
+                    <button id="offlineBtn" class="secondary" onclick="leaveOnline()" disabled>Go Offline</button>
+                    <button id="disconnectBtn" class="secondary" onclick="disconnectSocket()" disabled>Disconnect</button>
+                </div>
+
+                <div class="form-group">
+                    <label for="userId">Your user_sys_id</label>
+                    <input id="userId" type="text" value="user123">
+                </div>
+
+                <div class="btn-row">
+                    <button onclick="joinOnline()">Join Online</button>
+                </div>
+
+                <div class="online-panel" id="onlineUsersPanel">Online users: -</div>
+
+                <div class="form-group">
+                    <label for="subscribeIds">Subscribe user_sys_id list for realtime (comma separated)</label>
+                    <input id="subscribeIds" type="text" value="user456,user789">
+                    <div class="small-label">Realtime update จะส่งเฉพาะ user ที่ subscribe เท่านั้น</div>
+                </div>
+
+                <div class="btn-row">
+                    <button onclick="subscribeOnlineStatus()">Subscribe Realtime</button>
+                </div>
+
+                <div class="online-panel">
+                    <strong>Subscribed Users</strong>
+                    <div id="subscribedUsers" class="muted">-</div>
+                    <div id="statusGrid" class="status-grid"></div>
+                </div>
+
+                <div class="online-panel">
+                    <strong>Realtime Presence Timeline</strong>
+                    <ul id="presenceTimeline" class="timeline"></ul>
+                </div>
+
+                <div class="form-group">
+                    <label for="checkIds">Check user_sys_id list (comma separated)</label>
+                    <input id="checkIds" type="text" value="user123,user456,user789">
+                </div>
+
+                <div class="btn-row">
+                    <button onclick="checkOnlineStatus()">Check Online Status</button>
+                </div>
+
+                <div class="online-panel">
+                    <strong>Manual Check Result</strong>
+                    <ul id="statusResult" class="result-list"></ul>
+                </div>
+
+            </article>
+
+            <article class="card">
+                <div class="btn-row" style="justify-content: space-between;">
+                    <strong>Socket Logs</strong>
+                    <button class="secondary" onclick="clearLog()">Clear</button>
+                </div>
+                <div id="log" class="log"></div>
+            </article>
+        </section>
+    </div>
+
+    <script>
+        let ws = null;
+        let isConnected = false;
+        let isJoined = false;
+        let subscribedUsers = [];
+        let liveStatuses = {};
+
+        function logLine(label, payload) {
+            const log = document.getElementById('log');
+            const now = new Date().toLocaleTimeString();
+            let line = '[' + now + '] ' + label;
+            if (payload !== undefined) {
+                line += '\n' + JSON.stringify(payload, null, 2);
+            }
+            line += '\n----------------------------------------\n';
+            log.textContent += line;
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function updateStatus(connected) {
+            isConnected = connected;
+            const status = document.getElementById('status');
+            const connectBtn = document.getElementById('connectBtn');
+            const offlineBtn = document.getElementById('offlineBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+
+            if (connected) {
+                status.textContent = isJoined ? 'Connected and Online' : 'Connected (Offline)';
+                status.className = 'status connected';
+                connectBtn.disabled = true;
+                offlineBtn.disabled = !isJoined;
+                disconnectBtn.disabled = false;
+            } else {
+                status.textContent = 'Disconnected';
+                status.className = 'status disconnected';
+                connectBtn.disabled = false;
+                offlineBtn.disabled = true;
+                disconnectBtn.disabled = true;
+                isJoined = false;
+                subscribedUsers = [];
+                liveStatuses = {};
+                renderOnlineUsers([]);
+                renderStatusResult({});
+                renderSubscribedUsers([]);
+                renderLiveStatusGrid({});
+                renderPresenceTimelineReset();
+            }
+        }
+
+        function connectSocket() {
+            const url = document.getElementById('serverUrl').value.trim();
+            if (!url) {
+                alert('Please enter socket URL');
+                return;
+            }
+
+            ws = new WebSocket(url);
+
+            ws.onopen = function () {
+                updateStatus(true);
+                logLine('OUT: CONNECTED', { url: url });
+            };
+
+            ws.onmessage = function (event) {
+                let data;
+                try {
+                    data = JSON.parse(event.data);
+                } catch (err) {
+                    logLine('IN: RAW', event.data);
+                    return;
+                }
+
+                logLine('IN: ' + data.type, data.payload);
+
+                if (data.type === 'ONLINE_USERS') {
+                    renderOnlineUsers(data.payload && data.payload.online_user_sys_ids ? data.payload.online_user_sys_ids : []);
+                }
+
+                if (data.type === 'ONLINE_SUBSCRIPTION_RESULT') {
+                    const payload = data.payload || {};
+                    subscribedUsers = Array.isArray(payload.subscribed_user_sys_ids) ? payload.subscribed_user_sys_ids : [];
+                    liveStatuses = payload.statuses || {};
+                    renderSubscribedUsers(subscribedUsers);
+                    renderLiveStatusGrid(liveStatuses);
+
+                    if (payload.online_user_sys_ids) {
+                        renderOnlineUsers(payload.online_user_sys_ids);
+                    }
+
+                    logPresenceEvent('Subscribed to realtime list', subscribedUsers.join(', ') || '-');
+                }
+
+                if (data.type === 'ONLINE_STATUS_RESULT') {
+                    renderStatusResult(data.payload && data.payload.statuses ? data.payload.statuses : {});
+                    if (data.payload && data.payload.online_user_sys_ids) {
+                        renderOnlineUsers(data.payload.online_user_sys_ids);
+                    }
+                }
+
+                if (data.type === 'ONLINE_PRESENCE_CHANGED') {
+                    const payload = data.payload || {};
+                    const changedUser = payload.user_sys_id;
+                    const isOnlineChanged = Boolean(payload.is_online);
+
+                    if (changedUser && Object.prototype.hasOwnProperty.call(liveStatuses, changedUser)) {
+                        liveStatuses[changedUser] = isOnlineChanged;
+                        renderLiveStatusGrid(liveStatuses);
+                    }
+
+                    if (changedUser) {
+                        logPresenceEvent(changedUser, isOnlineChanged ? 'online' : 'offline');
+                    }
+                }
+
+                if (data.type === 'CHAT_RECEIVE') {
+                    logLine('CHAT_RECEIVE', data.payload);
+                }
+            };
+
+            ws.onerror = function () {
+                logLine('SYS: SOCKET ERROR');
+            };
+
+            ws.onclose = function (event) {
+                updateStatus(false);
+                logLine('SYS: CLOSED', { code: event.code });
+            };
+        }
+
+        function disconnectSocket() {
+            if (ws) {
+                ws.close();
+            }
+        }
+
+        function sendSocketMessage(message) {
+            if (!isConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+                logLine('OUT BLOCKED', { reason: 'socket not connected' });
+                return false;
+            }
+            ws.send(JSON.stringify(message));
+            logLine('OUT: ' + message.type, message.payload);
+            return true;
+        }
+
+        function joinOnline() {
+            const userId = document.getElementById('userId').value.trim();
+
+            if (!userId) {
+                alert('Please enter user_sys_id');
+                return;
+            }
+
+            const ok = sendSocketMessage({
+                type: 'JOIN_ONLINE',
+                payload: {
+                    user_sys_id: userId
+                }
+            });
+
+            if (ok) {
+                isJoined = true;
+                updateStatus(true);
+            }
+        }
+
+        function checkOnlineStatus() {
+            const raw = document.getElementById('checkIds').value.trim();
+
+            const ids = raw
+                .split(',')
+                .map(function (item) { return item.trim(); })
+                .filter(function (item) { return item.length > 0; });
+
+            sendSocketMessage({
+                type: 'ONLINE_STATUS_CHECK',
+                payload: {
+                    user_sys_ids: ids
+                }
+            });
+        }
+
+        function subscribeOnlineStatus() {
+            const raw = document.getElementById('subscribeIds').value.trim();
+
+            if (!isJoined) {
+                alert('Please join online first');
+                return;
+            }
+
+            const ids = raw
+                .split(',')
+                .map(function (item) { return item.trim(); })
+                .filter(function (item) { return item.length > 0; });
+
+            sendSocketMessage({
+                type: 'ONLINE_SUBSCRIBE',
+                payload: {
+                    user_sys_ids: ids
+                }
+            });
+        }
+
+        function leaveOnline() {
+            if (!isJoined) {
+                alert('You are already offline');
+                return;
+            }
+
+            const userId = document.getElementById('userId').value.trim();
+
+            const ok = sendSocketMessage({
+                type: 'LEAVE_ONLINE',
+                payload: {
+                    user_sys_id: userId
+                }
+            });
+
+            if (ok) {
+                isJoined = false;
+                subscribedUsers = [];
+                liveStatuses = {};
+                renderSubscribedUsers([]);
+                renderLiveStatusGrid({});
+                logPresenceEvent('You', 'offline');
+                updateStatus(true);
+            }
+        }
+
+        function renderOnlineUsers(userIds) {
+            const panel = document.getElementById('onlineUsersPanel');
+            if (!Array.isArray(userIds) || userIds.length === 0) {
+                panel.textContent = 'Online users: -';
+                return;
+            }
+            panel.textContent = 'Online users: ' + userIds.join(', ');
+        }
+
+        function renderStatusResult(statuses) {
+            const result = document.getElementById('statusResult');
+            result.innerHTML = '';
+
+            const keys = Object.keys(statuses || {});
+            if (keys.length === 0) {
+                const li = document.createElement('li');
+                li.textContent = 'No results yet';
+                result.appendChild(li);
+                return;
+            }
+
+            keys.forEach(function (id) {
+                const li = document.createElement('li');
+                li.textContent = id + ': ' + (statuses[id] ? 'online' : 'offline');
+                result.appendChild(li);
+            });
+        }
+
+        function renderSubscribedUsers(userIds) {
+            const el = document.getElementById('subscribedUsers');
+            if (!Array.isArray(userIds) || userIds.length === 0) {
+                el.textContent = '-';
+                return;
+            }
+
+            el.textContent = userIds.join(', ');
+        }
+
+        function renderLiveStatusGrid(statuses) {
+            const grid = document.getElementById('statusGrid');
+            grid.innerHTML = '';
+
+            const keys = Object.keys(statuses || {});
+            if (keys.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'muted';
+                empty.textContent = 'No subscribed users yet';
+                grid.appendChild(empty);
+                return;
+            }
+
+            keys.sort().forEach(function (id) {
+                const item = document.createElement('div');
+                item.className = 'status-item';
+
+                const name = document.createElement('span');
+                name.textContent = id;
+
+                const badge = document.createElement('span');
+                const isOnline = Boolean(statuses[id]);
+                badge.className = 'pill ' + (isOnline ? 'online' : 'offline');
+                badge.textContent = isOnline ? 'online' : 'offline';
+
+                item.appendChild(name);
+                item.appendChild(badge);
+                grid.appendChild(item);
+            });
+        }
+
+        function logPresenceEvent(subject, state) {
+            const timeline = document.getElementById('presenceTimeline');
+            const li = document.createElement('li');
+            li.textContent = '[' + new Date().toLocaleTimeString() + '] ' + subject + ' -> ' + state;
+            timeline.insertBefore(li, timeline.firstChild);
+
+            while (timeline.children.length > 40) {
+                timeline.removeChild(timeline.lastChild);
+            }
+        }
+
+        function renderPresenceTimelineReset() {
+            const timeline = document.getElementById('presenceTimeline');
+            timeline.innerHTML = '';
+        }
+
+        function clearLog() {
+            document.getElementById('log').textContent = '';
+        }
+
+    </script>
+</body>
+</html>
