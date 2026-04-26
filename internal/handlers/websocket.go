@@ -88,15 +88,12 @@ func (h *WebSocketHandler) HandleChatDeliver(payload interface{}) {
 	// broadcast to client in room
 	// Pass SenderId to avoid broadcasting back to sender if they are on this node
 	logger.Log("Broadcasting CHAT_DELIVER to room "+p.ChatId+" from sender "+p.SenderId, "HandleChatDeliver")
-	failedClients := h.wsManager.BroadcastToRoom(
+	h.wsManager.BroadcastToRoom(
 		p.ChatId,
 		p.SenderId,
 		"CHAT_RECEIVE",
 		p,
 	)
-
-	// delegate notification logic to notification.go
-	h.sendChatNotification(p, failedClients)
 }
 
 func (h *WebSocketHandler) HandleJoinSectionRoom(conn *websocket.Conn, payload interface{}) *models.ClientInfo {

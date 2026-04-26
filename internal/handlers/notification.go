@@ -2,8 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
-	"slices"
 
 	"github.com/gorilla/websocket"
 
@@ -31,7 +29,9 @@ func (h *WebSocketHandler) HandleRegisterNoti(conn *websocket.Conn, payload inte
 	return clientInfo
 }
 
-// HandleNotificationDeliver delivers a NOTIFICATION event from the queue to the target user
+// HandleNotificationDeliver delivers a NOTIFICATION event from the queue to the target user.
+// For chat notifications: skips delivery if the receiver is already in that chat room
+// (they receive CHAT_RECEIVE directly and don't need a badge increment).
 func (h *WebSocketHandler) HandleNotificationDeliver(payload interface{}) {
 	payloadBytes, _ := json.Marshal(payload)
 	var p models.NotificationDeliverPayload
@@ -40,41 +40,19 @@ func (h *WebSocketHandler) HandleNotificationDeliver(payload interface{}) {
 		return
 	}
 
+	// Skip chat notification if receiver is actively in that chat room
+	if payloadMap, ok := payload.(map[string]interface{}); ok {
+		if feature, _ := payloadMap["feature"].(string); feature == "chat" {
+			if h.wsManager.IsInChatRoom(p.ReceiveUserID, p.RefID) {
+				logger.Log("Skip chat noti: user in room "+p.RefID, "HandleNotificationDeliver")
+				return
+			}
+		}
+	}
+
 	// Send the original payload (not the parsed struct) so extra fields like
-	// section_id and community_id are preserved and forwarded to the Flutter client.
+	// section_id, community_id, and feature are preserved and forwarded to the Flutter client.
 	if err := h.wsManager.SendNotificationToUser(p.ReceiveUserID, payload); err != nil {
 		logger.Log("User offline, notification not delivered: "+p.ReceiveUserID, "HandleNotificationDeliver")
-	}
-}
-
-// sendChatNotification sends a notification banner to the receiver when they are
-// not in the chat room or their connection was stale during broadcast
-func (h *WebSocketHandler) sendChatNotification(p models.ChatDeliverPayload, failedClients []string) {
-	if p.ReceiveUserId == "" {
-		return
-	}
-
-	// Determine whether receiver needs a notification:
-	// 1. Not in the room at all, OR
-	// 2. Was in the room but their connection was stale (BroadcastToRoom failed for them)
-	inRoom := h.wsManager.IsInChatRoom(p.ReceiveUserId, p.ChatId)
-	stale := slices.Contains(failedClients, p.ReceiveUserId)
-	logger.Debug("IsInChatRoom result for user "+p.ReceiveUserId+" in chat "+p.ChatId+": "+fmt.Sprintf("%v", inRoom)+" stale: "+fmt.Sprintf("%v", stale), "sendChatNotification")
-
-	if !inRoom || stale {
-		notiPayload := map[string]interface{}{
-			"notification_id": p.NotificationId,
-			"feature":         "chat",
-			"actor_id":        p.SenderId,
-			"actor_name":      p.SenderName,
-			"body":            p.Content,
-			"ref_id":          p.ChatId,
-			"ref_type":        "chat",
-		}
-		if err := h.wsManager.SendNotificationToUser(p.ReceiveUserId, notiPayload); err != nil {
-			logger.Log("Receiver not on noti channel, skipping notification: "+p.ReceiveUserId, "sendChatNotification")
-		} else {
-			logger.Log("Sent chat notification to stale/offline receiver: "+p.ReceiveUserId, "sendChatNotification")
-		}
 	}
 }
