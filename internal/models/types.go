@@ -12,6 +12,7 @@ type ClientInfo struct {
 	UserID    string
 	ChatId    *string
 	SectionId *string
+	OnlineWatchUserIDs map[string]struct{}
 	QALiveId  *string
 	IsOnline  bool
 	Mutex     sync.Mutex
