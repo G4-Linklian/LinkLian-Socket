@@ -9,36 +9,34 @@ import (
 	"github.com/rabbitmq/amqp091-go"
 )
 
-// exchangeName ต้องตรงกับ RABBITMQ_EXCHANGE ใน LinkLian-Core/src/worker/worker.constants.ts
-const exchangeName = "linklian_events"
-
-// RabbitMQ Event types (routing keys)
-// ต้องตรงกับ RABBITMQ_ROUTING_KEY_* ใน LinkLian-Core/src/worker/worker.constants.ts
+// RabbitMQ Event types
 const (
 	EventChatMessage      = "chat.message"
+	EventQAAsk            = "qa.ask"
 	EventNotification     = "notification.send"
 	EventUserJoinRoom     = "user.join_room"
 	EventUserRegisterNoti = "user.register_noti"
 	EventReadNotification = "notification.read"
 )
 
-// Queue names — ต้องตรงกับ queue ที่ Core publish และ FCMConsumer consume
+const exchangeName = "linklian_events"
+
 const (
 	QueueChatEvents         = "chat_events"
+	QueueQAEvents           = "qa_events"
 	QueueNotificationEvents = "notification_events"
 	QueueUserEvents         = "user_events"
 )
-
 // queueBindings defines queue-to-routing-key-pattern bindings
 var queueBindings = map[string]string{
 	QueueChatEvents:         "chat.*",
+	QueueQAEvents:           "qa_live.#",
 	QueueNotificationEvents: "notification.*",
 	QueueUserEvents:         "user.*",
 }
 
 // EventHandler is a callback for processing consumed messages
 type EventHandler func(body []byte) error
-
 // Manager handles RabbitMQ connections and operations
 type Manager struct {
 	conn    *amqp091.Connection

@@ -1,8 +1,9 @@
 package config
 
 import (
-	"log"
 	"os"
+
+	"linklian-api/pkg/logger"
 
 	"github.com/joho/godotenv"
 )
@@ -15,13 +16,16 @@ type Config struct {
 	LogLevel         string
 	CORSOrigins      string
 	RabbitMQOptional bool
+	RedisHost        string
+	RedisPort        string
+	RedisPassword    string
 }
 
 // Load loads environment variables and returns configuration
 func Load() *Config {
 	// Load environment variables from .env file
 	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using system environment variables")
+		logger.Warn("No .env file found, using system environment variables", "config.Load")
 	}
 
 	return &Config{
@@ -31,6 +35,9 @@ func Load() *Config {
 		LogLevel:         getEnv("LOG_LEVEL", "info"),
 		CORSOrigins:      getEnv("CORS_ORIGINS", "*"),
 		RabbitMQOptional: getEnv("RABBITMQ_OPTIONAL", "true") == "true",
+		RedisHost:        getEnv("REDIS_HOST", "localhost"),
+		RedisPort:        getEnv("REDIS_PORT", "6379"),
+		RedisPassword:    getEnv("REDIS_PASSWORD", ""),
 	}
 }
 

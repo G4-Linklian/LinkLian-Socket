@@ -49,23 +49,46 @@ type JoinRoomPayload struct {
 	ChatId string `json:"chat_id"`
 }
 
-// JoinSectionPayload represents join section room message payload
-type JoinSectionPayload struct {
-	UserID    string `json:"user_id"`
-	SectionId string `json:"section_id"`
+// OnlineStatusCheckPayload represents payload for checking online status by user_sys_id list
+type OnlineStatusCheckPayload struct {
+	ChatId     string   `json:"chat_id,omitempty"`
+	UserSysIDs []string `json:"user_sys_ids"`
 }
 
-// JoinLivePayload represents join QA live room message payload
-type JoinLivePayload struct {
-	UserID   string `json:"user_id"`
-	QALiveId string `json:"qa_live_id"`
+// OnlineSubscribePayload represents payload for realtime online subscription list.
+type OnlineSubscribePayload struct {
+	UserSysIDs []string `json:"user_sys_ids"`
 }
 
-// SlideSyncPayload represents slide sync message payload
-type SlideSyncPayload struct {
-	UserID   string `json:"user_id"`
-	QALiveId string `json:"qa_live_id"`
-	Slide    int    `json:"slide"`
+// JoinOnlinePayload represents payload for standalone online status socket
+type JoinOnlinePayload struct {
+	UserSysID string `json:"user_sys_id"`
+}
+
+// OnlineStatusResultPayload represents online status result for requested users
+type OnlineStatusResultPayload struct {
+	ChatId           string          `json:"chat_id"`
+	Statuses         map[string]bool `json:"statuses"`
+	OnlineUserSysIDs []string        `json:"online_user_sys_ids"`
+}
+
+// OnlineSubscriptionResultPayload represents the current subscription snapshot for a subscriber.
+type OnlineSubscriptionResultPayload struct {
+	SubscribedUserSysIDs []string        `json:"subscribed_user_sys_ids"`
+	Statuses             map[string]bool `json:"statuses"`
+	OnlineUserSysIDs     []string        `json:"online_user_sys_ids"`
+}
+
+// OnlinePresenceChangedPayload represents realtime presence change for one user.
+type OnlinePresenceChangedPayload struct {
+	UserSysID string `json:"user_sys_id"`
+	IsOnline  bool   `json:"is_online"`
+}
+
+// OnlineUsersPayload represents current online users in a chat room
+type OnlineUsersPayload struct {
+	ChatId           string   `json:"chat_id"`
+	OnlineUserSysIDs []string `json:"online_user_sys_ids"`
 }
 
 // RegisterNotiPayload represents register notification payload
@@ -127,4 +150,21 @@ type HealthResponse struct {
 type SocketEvent struct {
 	Type    string                 `json:"type"`
 	Payload map[string]interface{} `json:"payload"`
+}
+
+// JoinLivePayload represents join live room payload for Q&A flow
+type JoinLivePayload struct {
+	UserID   string `json:"user_id"`
+	QALiveId string `json:"qa_live_id"`
+}
+
+type JoinSectionPayload struct {
+	UserID    string `json:"user_id"`
+	SectionId string `json:"section_id"`
+}
+
+type SlideSyncPayload struct {
+	QALiveId    string `json:"qa_live_id"`
+	SlideNumber int    `json:"slide_number"`
+	UserID      string `json:"user_id"`
 }
