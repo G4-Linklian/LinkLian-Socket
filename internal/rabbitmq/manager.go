@@ -3,23 +3,40 @@ package rabbitmq
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"linklian-api/pkg/logger"
 	"time"
 
 	"github.com/rabbitmq/amqp091-go"
-
-	// "linklian-api/internal/models"
 )
 
 // RabbitMQ Event types
 const (
 	EventChatMessage      = "chat.message"
+	EventQAAsk            = "qa.ask"
 	EventNotification     = "notification.send"
 	EventUserJoinRoom     = "user.join_room"
 	EventUserRegisterNoti = "user.register_noti"
 	EventReadNotification = "notification.read"
 )
 
+const exchangeName = "linklian_events"
+
+const (
+	QueueChatEvents         = "chat_events"
+	QueueQAEvents           = "qa_events"
+	QueueNotificationEvents = "notification_events"
+	QueueUserEvents         = "user_events"
+)
+// queueBindings defines queue-to-routing-key-pattern bindings
+var queueBindings = map[string]string{
+	QueueChatEvents:         "chat.*",
+	QueueQAEvents:           "qa_live.#",
+	QueueNotificationEvents: "notification.*",
+	QueueUserEvents:         "user.*",
+}
+
+// EventHandler is a callback for processing consumed messages
+type EventHandler func(body []byte) error
 // Manager handles RabbitMQ connections and operations
 type Manager struct {
 	conn    *amqp091.Connection
@@ -50,7 +67,7 @@ func NewManager(amqpURL string) (*Manager, error) {
 		return nil, err
 	}
 
-	log.Println("✅ RabbitMQ connected successfully")
+	logger.Log("RabbitMQ connected successfully", "NewManager")
 	return manager, nil
 }
 
@@ -66,59 +83,49 @@ func (m *Manager) Close() {
 
 // declareResources declares exchanges, queues and bindings
 func (m *Manager) declareResources() error {
-	// Declare exchange
+	// Declare topic exchange
 	err := m.channel.ExchangeDeclare(
-		"linklian_events", // name
-		"topic",           // type
-		true,              // durable
-		false,             // auto-deleted
-		false,             // internal
-		false,             // no-wait
-		nil,               // arguments
+		exchangeName, // name
+		"topic",      // type
+		true,         // durable
+		false,        // auto-deleted
+		false,        // internal
+		false,        // no-wait
+		nil,          // arguments
 	)
 	if err != nil {
 		return err
 	}
 
-	// Declare queues
-	queues := []string{
-		"chat_messages",
-		"notifications",
-		"user_activities",
-	}
-
-	for _, queueName := range queues {
+	// Declare queues and bind to exchange
+	for queue, routingKey := range queueBindings {
 		_, err = m.channel.QueueDeclare(
-			queueName, // name
-			true,      // durable
-			false,     // delete when unused
-			false,     // exclusive
-			false,     // no-wait
-			nil,       // arguments
+			queue, // name
+			true,  // durable
+			false, // delete when unused
+			false, // exclusive
+			false, // no-wait
+			nil,   // arguments
 		)
 		if err != nil {
 			return err
 		}
-	}
 
-	// Bind queues to exchange
-	bindings := map[string]string{
-		"chat_messages":   "chat.*",
-		"notifications":   "notification.*",
-		"user_activities": "user.*",
-	}
-
-	for routingKey := range bindings {
 		err = m.channel.QueueBind(
-			"socket_events",             // queue name
-			routingKey,        // routing key
-			"linklian_events", // exchange
+			queue,        // queue name
+			routingKey,   // routing key pattern
+			exchangeName, // exchange
 			false,
 			nil,
 		)
 		if err != nil {
 			return err
 		}
+
+		logger.Log("Queue declared and bound", "declareResources", map[string]interface{}{
+			"queue":       queue,
+			"routing_key": routingKey,
+		})
 	}
 
 	return nil
@@ -128,52 +135,89 @@ func (m *Manager) declareResources() error {
 func NewOptionalManager(amqpURL string) *Manager {
 	manager, err := NewManager(amqpURL)
 	if err != nil {
-		log.Printf("⚠️  RabbitMQ connection failed (running in offline mode): %v", err)
+		logger.Warn("RabbitMQ connection failed (running in offline mode)", "NewOptionalManager", err)
 		return &Manager{} // Return empty manager
 	}
 	return manager
 }
 
-// PublishEvent publishes an event to RabbitMQ
+// PublishEvent publishes an event to the topic exchange with the given routing key
 func (m *Manager) PublishEvent(eventType string, data interface{}) error {
-    // --- ส่วนที่แก้ไข: ลบ models.Event wrapper ออก ---
-    // Worker เราต้องการ JSON หน้าตาแบบ {"type": "...", "payload": {...}}
-    // ซึ่งตัวแปร data ที่ส่งเข้ามาเป็นแบบนั้นอยู่แล้ว จึงไม่ต้องห่อซ้ำ
+	body, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
 
-    body, err := json.Marshal(data)
-    if err != nil {
-        return err
-    }
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-    // Create context with timeout
-    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-    defer cancel()
-
-    // --- ส่วนที่แก้ไข: ชี้เป้าไปที่ Queue ของ Worker โดยตรง ---
-    return m.channel.PublishWithContext(
-        ctx,
-        "",              // Exchange: ใส่ค่าว่างเพื่อใช้ Default Direct Exchange
-        "socket_events", // Routing Key: **สำคัญมาก** ต้องตรงกับชื่อ Queue ใน Worker
-        false,           // mandatory
-        false,           // immediate
-        amqp091.Publishing{
-            ContentType: "application/json",
-            Body:        body,
-        },
-    )
+	// Publish to topic exchange; messages are routed to queues by routing key pattern
+	return m.channel.PublishWithContext(
+		ctx,
+		exchangeName, // exchange
+		eventType,    // routing key (e.g. "chat.message")
+		false,        // mandatory
+		false,        // immediate
+		amqp091.Publishing{
+			ContentType: "application/json",
+			Body:        body,
+		},
+	)
 }
 
 // SafePublishEvent publishes an event to RabbitMQ (safe version)
-// ฟังก์ชันนี้เหมือนเดิมได้เลย
 func (m *Manager) SafePublishEvent(eventType, userID string, data interface{}) {
-    if m.channel == nil {
-        log.Printf("📝 [OFFLINE] Would publish event %s for user %s: %v", eventType, userID, data)
-        return
-    }
+	if m.channel == nil {
+		logger.Log(" Would publish event "+eventType+" for user "+userID+": ", "SafePublishEvent", data)
+		return
+	}
 
-    if err := m.PublishEvent(eventType, data); err != nil {
-        log.Printf("❌ Failed to publish event %s: %v", eventType, err)
-    }
+	if err := m.PublishEvent(eventType, data); err != nil {
+		logger.Error("Failed to publish event "+eventType, "SafePublishEvent", err)
+	}
+}
+
+// StartConsumer starts consuming messages from the specified queue.
+// It runs in a blocking loop — call this in a goroutine.
+func (m *Manager) StartConsumer(queue string, handler EventHandler) {
+	if m.channel == nil {
+		logger.Warn("RabbitMQ channel is nil, skipping consumer for "+queue, "StartConsumer")
+		return
+	}
+
+	// Fair dispatch — 1 message at a time per consumer
+	if err := m.channel.Qos(1, 0, false); err != nil {
+		logger.Error("Failed to set QoS for "+queue, "StartConsumer", err)
+		return
+	}
+
+	msgs, err := m.channel.Consume(
+		queue, // queue
+		"",    // consumer tag (auto-generated)
+		false, // auto-ack
+		false, // exclusive
+		false, // no-local
+		false, // no-wait
+		nil,   // args
+	)
+	if err != nil {
+		logger.Error("Failed to start consumer for "+queue, "StartConsumer", err)
+		return
+	}
+
+	logger.Log("Consumer started for queue: "+queue, "StartConsumer")
+
+	for d := range msgs {
+		if err := handler(d.Body); err != nil {
+			logger.Error("Error processing message from "+queue, "StartConsumer", err)
+			// Ack anyway to avoid stuck messages; change to Nack+requeue if retry is needed
+			d.Ack(false)
+		} else {
+			d.Ack(false)
+		}
+	}
+
+	logger.Warn("Consumer channel closed for queue: "+queue, "StartConsumer")
 }
 
 // getCurrentTimestamp returns current unix timestamp

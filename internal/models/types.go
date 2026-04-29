@@ -8,11 +8,15 @@ import (
 
 // ClientInfo represents a connected websocket client
 type ClientInfo struct {
-	Socket   *websocket.Conn
-	UserID   string
-	ChatId   *string
-	IsOnline bool
-	Mutex    sync.Mutex
+	Socket    *websocket.Conn
+	UserID    string
+	ChatId    *string
+	QALiveId  *string
+	SectionId *string
+	// OnlineWatchUserIDs is used by /ws/online flow to track subscribed user IDs for realtime presence.
+	OnlineWatchUserIDs map[string]struct{}
+	IsOnline           bool
+	Mutex              sync.Mutex
 }
 
 // Message represents websocket message structure
@@ -37,6 +41,48 @@ type ChatMessage struct {
 type JoinRoomPayload struct {
 	UserID string `json:"user_id"`
 	ChatId string `json:"chat_id"`
+}
+
+// OnlineStatusCheckPayload represents payload for checking online status by user_sys_id list
+type OnlineStatusCheckPayload struct {
+	ChatId     string   `json:"chat_id,omitempty"`
+	UserSysIDs []string `json:"user_sys_ids"`
+}
+
+// OnlineSubscribePayload represents payload for realtime online subscription list.
+type OnlineSubscribePayload struct {
+	UserSysIDs []string `json:"user_sys_ids"`
+}
+
+// JoinOnlinePayload represents payload for standalone online status socket
+type JoinOnlinePayload struct {
+	UserSysID string `json:"user_sys_id"`
+}
+
+// OnlineStatusResultPayload represents online status result for requested users
+type OnlineStatusResultPayload struct {
+	ChatId           string          `json:"chat_id"`
+	Statuses         map[string]bool `json:"statuses"`
+	OnlineUserSysIDs []string        `json:"online_user_sys_ids"`
+}
+
+// OnlineSubscriptionResultPayload represents the current subscription snapshot for a subscriber.
+type OnlineSubscriptionResultPayload struct {
+	SubscribedUserSysIDs []string        `json:"subscribed_user_sys_ids"`
+	Statuses             map[string]bool `json:"statuses"`
+	OnlineUserSysIDs     []string        `json:"online_user_sys_ids"`
+}
+
+// OnlinePresenceChangedPayload represents realtime presence change for one user.
+type OnlinePresenceChangedPayload struct {
+	UserSysID string `json:"user_sys_id"`
+	IsOnline  bool   `json:"is_online"`
+}
+
+// OnlineUsersPayload represents current online users in a chat room
+type OnlineUsersPayload struct {
+	ChatId           string   `json:"chat_id"`
+	OnlineUserSysIDs []string `json:"online_user_sys_ids"`
 }
 
 // RegisterNotiPayload represents register notification payload
@@ -85,4 +131,21 @@ type HealthResponse struct {
 type SocketEvent struct {
 	Type    string                 `json:"type"`
 	Payload map[string]interface{} `json:"payload"`
+}
+
+// JoinLivePayload represents join live room payload for Q&A flow
+type JoinLivePayload struct {
+	UserID   string `json:"user_id"`
+	QALiveId string `json:"qa_live_id"`
+}
+
+type JoinSectionPayload struct {
+	UserID    string `json:"user_id"`
+	SectionId string `json:"section_id"`
+}
+
+type SlideSyncPayload struct {
+	QALiveId    string `json:"qa_live_id"`
+	SlideNumber int    `json:"slide_number"`
+	UserID      string `json:"user_id"`
 }

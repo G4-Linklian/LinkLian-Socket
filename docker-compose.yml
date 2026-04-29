@@ -8,11 +8,23 @@ services:
       dockerfile: Dockerfile
     container_name: linklian-socket
     ports:
-      - "4800:4800"
+      - "${PORT:-4800}:${PORT:-4800}"
     environment:
-      PORT: 4800
-      RABBITMQ_URL: amqp://user:password@rabbitmq:5672/
+      PORT: ${PORT:-4800}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://user:password@rabbitmq:5672/}
+      GO_ENV: ${GO_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      REDIS_HOST: ${REDIS_HOST:-localhost}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     volumes:
       - .:/app
     working_dir: /app
     restart: unless-stopped
+    networks:
+      - linklian-net
+
+networks:
+  linklian-net:
+    external: true
