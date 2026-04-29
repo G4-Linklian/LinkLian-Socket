@@ -314,6 +314,40 @@ func (m *Manager) SendNotificationToUser(targetUserID string, notiData interface
 	return nil
 }
 
+// SendChatWaitingToUser sends a waiting message trigger to a specific user
+func (m *Manager) SendChatWaitingToUser(targetUserID string, payload models.ChatWaitingPayload) error {
+	client, exists := m.GetClient(targetUserID)
+
+	if !exists || !client.IsOnline {
+		return ErrUserOffline
+	}
+
+	response := map[string]interface{}{
+		"type":    "CHAT_WAITING",
+		"payload": payload,
+	}
+
+	responseBytes, err := json.Marshal(response)
+	if err != nil {
+		logger.Error("Failed to marshal chat waiting payload", "SendChatWaitingToUser", err)
+		return err
+	}
+
+	client.Mutex.Lock()
+	err = client.Socket.WriteMessage(websocket.TextMessage, responseBytes)
+	client.Mutex.Unlock()
+
+	if err != nil {
+		logger.Error("Failed to send chat waiting to user "+targetUserID, "SendChatWaitingToUser", err)
+		m.RemoveClient(targetUserID)
+		return err
+	}
+
+	logger.Log("Chat waiting sent to user "+targetUserID, "SendChatWaitingToUser")
+
+	return nil
+}
+
 // UpgradeConnection upgrades HTTP connection to WebSocket
 func (m *Manager) UpgradeConnection(w http.ResponseWriter, r *http.Request) (*websocket.Conn, error) {
 	return m.upgrader.Upgrade(w, r, nil)
