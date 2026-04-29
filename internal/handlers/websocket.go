@@ -53,6 +53,37 @@ func (h *WebSocketHandler) HandleJoinRoom(conn *websocket.Conn, payload interfac
 	return clientInfo
 }
 
+// HandleJoinWaiting handles JOIN_WAITING messages
+func (h *WebSocketHandler) HandleJoinWaiting(conn *websocket.Conn, payload interface{}, current *models.ClientInfo) *models.ClientInfo {
+	payloadBytes, _ := json.Marshal(payload)
+	var joinPayload models.JoinWaitingPayload
+	if err := json.Unmarshal(payloadBytes, &joinPayload); err != nil {
+		logger.Error("Failed to parse JOIN_WAITING payload", "HandleJoinWaiting", err)
+		return nil
+	}
+
+	userID := strings.TrimSpace(joinPayload.UserID)
+	if userID == "" {
+		logger.Warn("Invalid JOIN_WAITING payload", "HandleJoinWaiting", joinPayload)
+		return nil
+	}
+
+	if current != nil && current.UserID == userID {
+		current.IsOnline = true
+		return current
+	}
+
+	clientInfo := &models.ClientInfo{
+		Socket:   conn,
+		UserID:   userID,
+		IsOnline: true,
+	}
+
+	h.wsManager.AddClient(clientInfo)
+
+	return clientInfo
+}
+
 // HandleOnlineStatusCheck handles ONLINE_STATUS_CHECK messages
 func (h *WebSocketHandler) HandleOnlineStatusCheck(clientInfo *models.ClientInfo, payload interface{}) {
 	if clientInfo == nil {
@@ -115,16 +146,28 @@ func (h *WebSocketHandler) HandleChatSend(clientInfo *models.ClientInfo, payload
 	// Create chat message for local broadcast
 	sendAt := time.Now().Format("15:04:05")
 	chatMessage := models.ChatMessage{
-		ChatId:   chatPayload.ChatId,
-		SenderId: chatPayload.SenderId,
-		Content:  chatPayload.Content,
-		SendAt:   sendAt,
-		ReplyId:  chatPayload.ReplyId,
-		FileUrl:  chatPayload.FileUrl,
+		ChatId:     chatPayload.ChatId,
+		SenderId:   chatPayload.SenderId,
+		ReceiverId: chatPayload.ReceiverId,
+		Content:    chatPayload.Content,
+		SendAt:     sendAt,
+		ReplyId:    chatPayload.ReplyId,
+		FileUrl:    chatPayload.FileUrl,
 	}
 
 	// Broadcast to clients in the same room
 	h.wsManager.BroadcastToRoom(chatPayload.ChatId, chatPayload.SenderId, "CHAT_RECEIVE", chatMessage)
+
+	if chatPayload.ReceiverId != nil && strings.TrimSpace(*chatPayload.ReceiverId) != "" {
+		waitingPayload := models.ChatWaitingPayload{
+			MessageId: "",
+			ChatId:    chatPayload.ChatId,
+			SenderId:  chatPayload.SenderId,
+		}
+		if err := h.wsManager.SendChatWaitingToUser(*chatPayload.ReceiverId, waitingPayload); err != nil {
+			logger.Warn("Failed to send CHAT_WAITING to user "+*chatPayload.ReceiverId, "HandleChatSend", err)
+		}
+	}
 
 }
 
@@ -145,6 +188,17 @@ func (h *WebSocketHandler) HandleChatDeliver(payload interface{}) {
 		"CHAT_RECEIVE",
 		p,
 	)
+
+	if p.ReceiverId != nil && strings.TrimSpace(*p.ReceiverId) != "" {
+		waitingPayload := models.ChatWaitingPayload{
+			MessageId: p.MessageId,
+			ChatId:    p.ChatId,
+			SenderId:  p.SenderId,
+		}
+		if err := h.wsManager.SendChatWaitingToUser(*p.ReceiverId, waitingPayload); err != nil {
+			logger.Warn("Failed to send CHAT_WAITING to user "+*p.ReceiverId, "HandleChatDeliver", err)
+		}
+	}
 }
 
 func (h *WebSocketHandler) HandleJoinSectionRoom(conn *websocket.Conn, payload interface{}) *models.ClientInfo {

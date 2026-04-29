@@ -224,6 +224,10 @@ func (s *Server) handleChatConnection(w http.ResponseWriter, r *http.Request) {
 		case "JOIN_ROOM":
 			clientInfo = s.wsHandler.HandleJoinRoom(conn, msg.Payload)
 
+		case "JOIN_WAITING":
+			logger.Debug("JOIN_WAITING message received", "handleChatConnection", msg)
+			clientInfo = s.wsHandler.HandleJoinWaiting(conn, msg.Payload, clientInfo)
+
 		case "CHAT_SEND":
 			if clientInfo != nil {
 				s.wsHandler.HandleChatSend(clientInfo, msg.Payload)

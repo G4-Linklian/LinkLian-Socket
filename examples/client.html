@@ -123,7 +123,7 @@
         
         <div class="form-group">
             <label for="serverUrl">Server URL:</label>
-            <input type="text" id="serverUrl" value="ws://localhost:4800/ws">
+            <input type="text" id="serverUrl" value="ws://localhost:4800/ws/chat">
         </div>
         
         <button id="connectBtn" onclick="connect()">Connect</button>
@@ -145,8 +145,14 @@
                 <input type="text" id="conversationID" value="CHAT_001" placeholder="Enter chat ID">
             </div>
 
+            <div class="form-group">
+                <label for="receiverID">Receiver ID (optional):</label>
+                <input type="text" id="receiverID" value="" placeholder="Enter receiver user ID">
+            </div>
+
             <button onclick="joinRoom()">🏠 Join Chat</button>
-            <button onclick="registerNoti()">🔔 Register for Notifications</button>
+
+            <button onclick="joinWaiting()">⏳ Join Waiting</button>
 
             <hr>
 
@@ -158,11 +164,6 @@
 
             <hr>
 
-            <div class="form-group">
-                <label for="notificationID">Notification ID:</label>
-                <input type="text" id="notificationID" value="noti789" placeholder="Enter notification ID">
-            </div>
-            <button onclick="readNotification()">📖 Mark as Read</button>
         </div>
 
         <div class="container">
@@ -226,6 +227,8 @@
                         // Handle specific message types
                         if (data.type === 'CHAT_RECEIVE') {
                             addMessage(`💬 Chat from ${data.payload.sender_id}: "${data.payload.content}"`, 'received');
+                        } else if (data.type === 'CHAT_WAITING') {
+                            addMessage(`⏳ Waiting trigger for chat ${data.payload.chat_id} (message ${data.payload.message_id})`, 'received');
                         } else if (data.type === 'NOTIFICATION') {
                             addMessage(`🔔 Notification: ${JSON.stringify(data.payload)}`, 'received');
                         }
@@ -290,6 +293,22 @@
             });
         }
 
+        function joinWaiting() {
+            const userID = document.getElementById('userID').value;
+
+            if (!userID) {
+                alert('Please enter User ID');
+                return;
+            }
+
+            sendWSMessage({
+                type: 'JOIN_WAITING',
+                payload: {
+                    user_id: userID
+                }
+            });
+        }
+
         function registerNoti() {
             const senderId = document.getElementById('userID').value;
             
@@ -310,6 +329,7 @@
             const content = document.getElementById('messageText').value;
             const chatId = document.getElementById('conversationID').value;
             const senderId = document.getElementById('userID').value;
+            const receiverId = document.getElementById('receiverID').value;
             
             if (!content || !chatId || !senderId) {
                 alert('Please enter message text, chat ID, and user ID');
@@ -321,7 +341,8 @@
                 payload: {
                     sender_id: senderId,
                     chat_id: chatId,
-                    content: content
+                    content: content,
+                    receiver_id: receiverId || undefined
                 }
             })) {
                 document.getElementById('messageText').value = '';

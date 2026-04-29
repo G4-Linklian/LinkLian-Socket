@@ -27,20 +27,26 @@ type Message struct {
 
 // ChatMessage represents chat message data
 type ChatMessage struct {
-	MessageId string  `json:"message_id"`
-	ChatId    string  `json:"chat_id"`
-	SenderId  string  `json:"sender_id"`
-	Content   string  `json:"content"`
-	SendAt    string  `json:"send_at"`
-	ReplyId   *string `json:"reply_id,omitempty"`
-	FileUrl   *string `json:"file,omitempty"`
-	CreatedAt string  `json:"created_at"`
+	MessageId  string  `json:"message_id"`
+	ChatId     string  `json:"chat_id"`
+	SenderId   string  `json:"sender_id"`
+	ReceiverId *string `json:"receiver_id,omitempty"`
+	Content    string  `json:"content"`
+	SendAt     string  `json:"send_at"`
+	ReplyId    *string `json:"reply_id,omitempty"`
+	FileUrl    *string `json:"file,omitempty"`
+	CreatedAt  string  `json:"created_at"`
 }
 
 // JoinRoomPayload represents join room message payload
 type JoinRoomPayload struct {
 	UserID string `json:"user_id"`
 	ChatId string `json:"chat_id"`
+}
+
+// JoinWaitingPayload represents join waiting message payload
+type JoinWaitingPayload struct {
+	UserID string `json:"user_id"`
 }
 
 // OnlineStatusCheckPayload represents payload for checking online status by user_sys_id list
@@ -92,24 +98,33 @@ type RegisterNotiPayload struct {
 
 // ChatSendPayload represents chat send payload
 type ChatSendPayload struct {
-	ChatId    string  `json:"chat_id"`
-	SenderId  string  `json:"sender_id"`
-	Content   string  `json:"content"`
-	ReplyId   *string `json:"reply_id,omitempty"`
-	FileUrl   *string `json:"file,omitempty"`
-	CreatedAt string  `json:"created_at"`
+	ChatId     string  `json:"chat_id"`
+	SenderId   string  `json:"sender_id"`
+	ReceiverId *string `json:"receiver_id,omitempty"`
+	Content    string  `json:"content"`
+	ReplyId    *string `json:"reply_id,omitempty"`
+	FileUrl    *string `json:"file,omitempty"`
+	CreatedAt  string  `json:"created_at"`
 }
 
 // ChatDeliverPayload represents chat deliver payload
 type ChatDeliverPayload struct {
-	MessageId string  `json:"message_id" mapstructure:"message_id"`
-	ChatId    string  `json:"chat_id" mapstructure:"chat_id"`
-	SenderId  string  `json:"sender_id" mapstructure:"sender_id"`
-	Content   string  `json:"content" mapstructure:"content"`
-	SendAt    string  `json:"send_at" mapstructure:"send_at"`
-	ReplyId   *string `json:"reply_id,omitempty" mapstructure:"reply_id"`
-	FileUrl   *string `json:"file,omitempty" mapstructure:"file"`
-	CreatedAt string  `json:"created_at" mapstructure:"created_at"`
+	MessageId  string  `json:"message_id" mapstructure:"message_id"`
+	ChatId     string  `json:"chat_id" mapstructure:"chat_id"`
+	SenderId   string  `json:"sender_id" mapstructure:"sender_id"`
+	ReceiverId *string `json:"receiver_id,omitempty" mapstructure:"receiver_id"`
+	Content    string  `json:"content" mapstructure:"content"`
+	SendAt     string  `json:"send_at" mapstructure:"send_at"`
+	ReplyId    *string `json:"reply_id,omitempty" mapstructure:"reply_id"`
+	FileUrl    *string `json:"file,omitempty" mapstructure:"file"`
+	CreatedAt  string  `json:"created_at" mapstructure:"created_at"`
+}
+
+// ChatWaitingPayload represents waiting message trigger to a user
+type ChatWaitingPayload struct {
+	MessageId string `json:"message_id"`
+	ChatId    string `json:"chat_id"`
+	SenderId  string `json:"sender_id"`
 }
 
 // Event represents RabbitMQ message structure
