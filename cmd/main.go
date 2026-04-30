@@ -27,6 +27,7 @@ type Server struct {
 	rabbitManager *rabbitmq.Manager
 	wsHandler     *handlers.WebSocketHandler
 	onlineHandler *handlers.OnlineStatusHandler
+	notiHandler   *handlers.NotificationHandler
 	httpHandler   *handlers.HTTPHandler
 	redisClient   *redis.Client
 }
@@ -74,6 +75,7 @@ func NewServer() (*Server, error) {
 	wsHandler := handlers.NewWebSocketHandler(wsManager, rabbitManager, messageRepo)
 	onlineManager := wsmanager.NewManager()
 	onlineHandler := handlers.NewOnlineStatusHandler(onlineManager)
+	notiHandler := handlers.NewNotificationHandler(wsManager)
 	httpHandler := handlers.NewHTTPHandler(wsManager)
 
 	return &Server{
@@ -83,6 +85,7 @@ func NewServer() (*Server, error) {
 		rabbitManager: rabbitManager,
 		wsHandler:     wsHandler,
 		onlineHandler: onlineHandler,
+		notiHandler:   notiHandler,
 		httpHandler:   httpHandler,
 		redisClient:   rdb,
 	}, nil
@@ -402,8 +405,14 @@ func (s *Server) handleNotiConnection(w http.ResponseWriter, r *http.Request) {
 
 		switch msg.Type {
 		case "REGISTER_NOTI":
+			clientInfo = s.notiHandler.HandleRegister(conn, msg.Payload, clientInfo)
+
+		case "SEND_NOTIFICATION":
+			logger.Log("Received SEND_NOTIFICATION message", "handleNotiConnection", msg)
+			s.notiHandler.HandleSendNoti(clientInfo, msg.Payload)
 
 		case "READ_NOTI":
+			s.notiHandler.HandleRead(clientInfo, msg.Payload)
 		default:
 			logger.Warn("Unknown noti message type: "+msg.Type, "handleNotiConnection")
 		}
