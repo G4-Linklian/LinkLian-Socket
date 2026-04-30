@@ -63,7 +63,7 @@ func (h *NotificationHandler) HandleSendNoti(clientInfo *models.ClientInfo, payl
     var sendPayload struct {
         SenderID         string   `json:"sender_id"`
         TargetUserSysIDs []string `json:"target_user_sys_ids"`
-        ChatID           *string  `json:"chat_id,omitempty"`
+        RefID           *string  `json:"ref_id,omitempty"`
         Title            string   `json:"title,omitempty"`
         Body             string   `json:"body,omitempty"`
         CreatedAt        string   `json:"created_at,omitempty"`
@@ -94,7 +94,7 @@ func (h *NotificationHandler) HandleSendNoti(clientInfo *models.ClientInfo, payl
     notificationPayload := map[string]interface{}{
         "sender_id":           senderID,
         "target_user_sys_ids": sendPayload.TargetUserSysIDs,
-        "chat_id":             sendPayload.ChatID,
+        "ref_id":              sendPayload.RefID,
         "title":               sendPayload.Title,
         "body":                sendPayload.Body,
         "created_at":          sendPayload.CreatedAt,
