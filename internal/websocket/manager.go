@@ -290,7 +290,7 @@ func (m *Manager) SendNotificationToUser(targetUserID string, notiData interface
 	}
 
 	response := map[string]interface{}{
-		"type":    "NOTIFICATION",
+		"type":    "NOTI_RECEIVE",
 		"payload": notiData,
 	}
 
